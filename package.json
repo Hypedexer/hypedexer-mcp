@@ -1,0 +1,53 @@
+{
+  "name": "@hypedexer/mcp-server",
+  "version": "0.1.0",
+  "description": "Model Context Protocol server for the HypeDexer Hyperliquid data API — read-only market, trading, HIP-3/HIP-4, EVM and builder analytics tools, plus keyless Hyperliquid public tools.",
+  "license": "MIT",
+  "author": "hypedexer",
+  "type": "module",
+  "bin": {
+    "hypedexer-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "hyperliquid",
+    "hypedexer",
+    "claude",
+    "ai",
+    "trading",
+    "perp"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:live": "HYPEDEXER_MCP_LIVE=1 vitest run",
+    "lint": "biome check src test",
+    "format": "biome format --write src test",
+    "inspect": "npm run build && npx @modelcontextprotocol/inspector node dist/index.js",
+    "smoke": "npm run build && bash scripts/inspector-smoke.sh"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.1.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

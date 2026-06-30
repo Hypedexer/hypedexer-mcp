@@ -1,0 +1,17 @@
+# Changelog
+
+## 0.1.0 (unreleased)
+
+Initial release — a large, usable base.
+
+- 83 read-only MCP tools across 17 env-gated groups (8 keyless `hl_public_*` Hyperliquid tools + 75 `hd_*` HypeDexer tools), covering HypeDexer's full API surface: Data API REST, both WebSocket hubs, and the HyperEVM JSON-RPC product.
+- `streams` group: the indexed multiplex WebSocket channels (`completed_trades`, `fills_spot`, `recent_activity`, `liquidation`, `hip4_events`) as bounded-window snapshot tools over the native global `WebSocket` (no `ws` dependency). `hd_stream_fills_spot` is the only working source of spot-fill data.
+- `live` group: the Live (mirror) WebSocket channels on `?mode=mirror` (`allFills`, `userFills`, `bbo`, `l2Book`, `l4Book`, `l4BookUpdates`, `trades`, `allMids`) as bounded-window snapshots.
+- `rpc` group: HyperEVM JSON-RPC (`https://rpc.hypedexer.com`) — a generic `hd_rpc_call` passthrough over the whole read surface, typed convenience tools (block number, eth_call, getLogs, getBlock), and `hd_rpc_subscribe` snapshotting `eth_subscribe` (newHeads/logs/pending) over WS. Read-only: state-mutating methods are refused.
+- stdio and streamable-HTTP (per-session) transports.
+- Vendored, tested core: HTTP client, error taxonomy, 4-kind pagination, time/sentinel handling, 3 envelope families.
+- Quirks normalized in one layer (1970 sentinels, page-size-as-total, asc-cursor corruption, not_yet_live, IPv4 node addresses).
+- Uniform pagination handles + recovery-steering errors + token-budgeted, structured outputs.
+- Boots and smoke-tests with no API key via the keyless public group.
+- Dependency-free `.env` auto-loading (override → cwd → package root; existing env wins) with a `HYPEDEXER_ENV_FILE` override.
+- `scripts/launch.sh` for Claude Desktop on Windows + WSL (resolves nvm `node`, keeps stdout clean for the MCP stream).
