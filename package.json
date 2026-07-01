@@ -1,7 +1,7 @@
 {
   "name": "@hypedexer/mcp-server",
-  "version": "0.1.0",
-  "description": "Model Context Protocol server for the HypeDexer Hyperliquid data API — read-only market, trading, HIP-3/HIP-4, EVM and builder analytics tools, plus keyless Hyperliquid public tools.",
+  "version": "1.0.0-rc.1",
+  "description": "Model Context Protocol server for the HypeDexer Hyperliquid data API: read-only market, trading, HIP-3/HIP-4, EVM and builder analytics tools, plus keyless Hyperliquid public tools.",
   "license": "MIT",
   "author": "hypedexer",
   "type": "module",
@@ -12,7 +12,7 @@
   "types": "./dist/index.d.ts",
   "files": ["dist", "README.md", "LICENSE"],
   "engines": {
-    "node": ">=20.18.0"
+    "node": ">=22.0.0"
   },
   "keywords": [
     "mcp",
@@ -35,7 +35,8 @@
     "lint": "biome check src test",
     "format": "biome format --write src test",
     "inspect": "npm run build && npx @modelcontextprotocol/inspector node dist/index.js",
-    "smoke": "npm run build && bash scripts/inspector-smoke.sh"
+    "smoke": "npm run build && bash scripts/inspector-smoke.sh",
+    "prepublishOnly": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
