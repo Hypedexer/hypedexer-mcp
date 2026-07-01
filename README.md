@@ -166,6 +166,18 @@ MCP tools are request/response; HypeDexer's WebSockets push continuously. The `h
 - **`streams`** — the indexed *multiplex* endpoint (`wss://.../ws`): `completed_trades` (optional `user` scope), `fills_spot` (the only working spot-fill source, since REST `/spot/*` is permanently broken), `recent_activity`, `liquidation`, `hip4_events`.
 - **`live`** — the Live *mirror* endpoint (`wss://.../ws?mode=mirror`): order books (`l2Book`/`l4Book`/`l4BookUpdates`), `bbo`, `trades` (per `coin`), the `allFills` firehose, `userFills` (per `user`), and `allMids`. Book channels return the current snapshot in the first frame.
 
+  Per-channel status (live-verified 2026-07-01, the upstream mirror hub is still maturing):
+
+  | Channel | Status |
+  | --- | --- |
+  | `allMids`, `l2Book`, `allFills`, `userFills` | Working: deliver data reliably. |
+  | `bbo` | Subscription accepted but no frames emitted upstream. Use `l2Book` (top level = best bid/offer). |
+  | `trades` | Rejected upstream ("Unsupported subscription"). Use `hd_stream_completed_trades` or `l2Book`. |
+  | `l4Book` | Deep snapshots can exceed the runtime WebSocket decompression limit and error. Use `l2Book`. |
+  | `l4BookUpdates` | Accepted but sparse; may return nothing in a short window. |
+
+  The mirror hub also rate-limits rapid reconnects (a back-to-back second connection may be refused), so space snapshot calls a few seconds apart.
+
 ### HyperEVM JSON-RPC (`rpc` group)
 
 > **Not deployed yet (opt-in).** As of 2026-07-01 `rpc.hypedexer.com` returns DNS NXDOMAIN, so every `rpc` call network-errors. The group is therefore excluded from the `all` preset and off by default. Enable it explicitly with `HYPEDEXER_MCP_TOOLS=all,rpc` once HypeDexer deploys the endpoint, or point `HYPEDEXER_RPC_URL` at a reachable HyperEVM JSON-RPC node.

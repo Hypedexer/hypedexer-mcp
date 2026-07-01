@@ -189,7 +189,9 @@ export const liveTools: ToolModule = [
       'Live mirror channel `l4Book`: the raw per-order L4 book for one coin (individual resting orders, ' +
       'not aggregated levels). First frame is the snapshot, then updates. Opens the mirror socket, ' +
       'subscribes scoped to `coin`, and collects for a bounded window. For incremental deltas only, use ' +
-      'hd_live_l4_book_updates.',
+      'hd_live_l4_book_updates. NOTE: a deep L4 snapshot can exceed the native runtime WebSocket ' +
+      'decompression limit and fail with "Max decompressed message size exceeded" (seen on BTC, ' +
+      '2026-07-01); for reliable aggregated depth use hd_live_l2_book.',
     inputSchema: { coin: coinRequired, seconds: secondsSchema, max_items: maxItemsSchema },
     async handler(args, ctx) {
       return collectLive('l4Book', args, ctx, 'l4Book')
@@ -216,9 +218,11 @@ export const liveTools: ToolModule = [
     group: 'live',
     title: 'Stream public trade prints (Live WS)',
     description:
-      'Live mirror channel `trades`: raw public trade prints for one coin as they execute. Opens the ' +
-      'mirror socket, subscribes scoped to `coin`, and collects trades for a bounded window. Can be ' +
-      'high volume on busy markets. Point-in-time snapshot; call again for a fresh window.',
+      'Live mirror channel `trades`: raw public trade prints for one coin as they execute. NOTE: as of ' +
+      '2026-07-01 the upstream mirror hub rejects this subscription ("Unsupported subscription: trades"), ' +
+      'so this tool currently errors. Use hd_stream_completed_trades (indexed round-trip trades) or ' +
+      'hd_live_l2_book instead. Kept for when the upstream channel is enabled. Opens the mirror socket, ' +
+      'subscribes scoped to `coin`, and collects for a bounded window.',
     inputSchema: { coin: coinRequired, seconds: secondsSchema, max_items: maxItemsSchema },
     async handler(args, ctx) {
       return collectLive('trades', args, ctx, 'trade')

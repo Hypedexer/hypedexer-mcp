@@ -11,7 +11,7 @@ First release candidate. Packaging and robustness hardening on top of the 0.1.0 
 - Live validation against the real API surfaced two issues, both fixed:
   - `rpc` group is now opt-in only (excluded from the `all` preset) because `rpc.hypedexer.com` is not deployed yet (DNS NXDOMAIN); enable with `HYPEDEXER_MCP_TOOLS=all,rpc` once the endpoint is live. The default surface drops from all-groups to `all` minus `info`/`rpc`.
   - Mirror WebSocket collector now filters the `subscriptionResponse` ack frame, which shares the `{ channel, data }` envelope of real data and was being collected as a bogus item.
-- `hd_live_bbo` documents that the upstream mirror hub currently accepts the bbo subscription but emits no bbo frames (verified while l2Book streams normally for the same coin), and steers callers to `hd_live_l2_book` for top-of-book.
+- All 8 Live mirror channels live-verified. `allMids`, `l2Book`, `allFills`, `userFills` deliver reliably. Documented the ones the upstream hub does not yet serve well: `bbo` (accepted but silent, steer to `l2Book`), `trades` ("Unsupported subscription" upstream, steer to `hd_stream_completed_trades`), `l4Book` (deep snapshots can exceed the runtime WebSocket decompression limit), `l4BookUpdates` (accepted but sparse). Each tool's description and the README carry the per-channel status.
 - User-Agent header bumped to `hypedexer-mcp/1.0.0-rc.1`.
 
 ## 0.1.0
