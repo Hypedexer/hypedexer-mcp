@@ -24,7 +24,7 @@ describe('tool registration over an in-memory MCP session', () => {
   it('registers all 83 tools with valid, unique, snake_case schemas (all groups)', async () => {
     const { client, close } = await connect({
       HYPEDEXER_API_KEY: 'dummy',
-      HYPEDEXER_MCP_TOOLS: 'all,info',
+      HYPEDEXER_MCP_TOOLS: 'all,info,rpc',
     })
     cleanup = close
     const { tools } = await client.listTools()

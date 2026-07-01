@@ -11,7 +11,12 @@ console.log('key loaded:', key.slice(0, 6) + '…(masked, len ' + key.length + '
 const transport = new StdioClientTransport({
   command: 'node',
   args: ['dist/index.js'],
-  env: { ...process.env, HYPEDEXER_API_KEY: key, HYPEDEXER_MCP_TOOLS: 'all,info', HYPEDEXER_LOG_LEVEL: 'error' },
+  env: {
+    ...process.env,
+    HYPEDEXER_API_KEY: key,
+    HYPEDEXER_MCP_TOOLS: 'all,info',
+    HYPEDEXER_LOG_LEVEL: 'error',
+  },
 })
 const client = new Client({ name: 'keyed-smoke', version: '0.0.0' })
 await client.connect(transport)
@@ -26,7 +31,8 @@ function summarize(res) {
   if (Array.isArray(d)) s = `${d.length} rows`
   else if (d && typeof d === 'object') s = `obj{${Object.keys(d).slice(0, 4).join(',')}}`
   else s = String(d).slice(0, 40)
-  if (sc.pagination?.has_more) s += ` +more(${sc.pagination.next_cursor ? 'cursor' : sc.pagination.next_offset !== undefined ? 'offset' : 'time'})`
+  if (sc.pagination?.has_more)
+    s += ` +more(${sc.pagination.next_cursor ? 'cursor' : sc.pagination.next_offset !== undefined ? 'offset' : 'time'})`
   if (sc.notes?.length) s += ` [note]`
   return s
 }
@@ -51,12 +57,14 @@ const calls = [
   ['hd_evm_blocks', { limit: 3 }],
 ]
 
-let ok = 0, err = 0
+let ok = 0,
+  err = 0
 for (const [name, args] of calls) {
   try {
     const res = await client.callTool({ name, arguments: args })
     const sum = summarize(res)
-    if (res.isError) err++; else ok++
+    if (res.isError) err++
+    else ok++
     console.log(`  ${res.isError ? '✗' : '✓'} ${name.padEnd(28)} ${sum}`)
   } catch (e) {
     err++

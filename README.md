@@ -128,10 +128,12 @@ No `env`, no `WSLENV`, no key pasted into JSON. Restart Claude Desktop. (On macO
 
 `public` (keyless) is always on. Keyed groups self-skip when no key is set.
 
-- **Presets:** `public` (keyless only) · `core` (public + fills, markets, analytics, traders, liquidations, funding, vaults) · `all` (everything except `info`).
+- **Presets:** `public` (keyless only) · `core` (public + fills, markets, analytics, traders, liquidations, funding, vaults) · `all` (everything except the opt-in-only `info` and `rpc` groups).
 - **Groups:** `public`, `fills`, `markets`, `analytics`, `traders`, `liquidations`, `funding`, `vaults`, `hip3`, `hip4`, `builders`, `twaps`, `evm`, `streams`, `live`, `rpc`, `info`.
 
-The raw `info` escape hatch is never in a preset — request it by name (`HYPEDEXER_MCP_TOOLS=all,info`).
+Two groups are never in a preset and must be requested by name:
+- `info`: the raw `/info` escape hatch (`HYPEDEXER_MCP_TOOLS=all,info`).
+- `rpc`: its endpoint (`rpc.hypedexer.com`) is not deployed yet, so it is off by default; enable it with `HYPEDEXER_MCP_TOOLS=all,rpc` once the host is live or when pointing `HYPEDEXER_RPC_URL` at another node.
 
 ## Tool catalog
 
@@ -166,7 +168,9 @@ MCP tools are request/response; HypeDexer's WebSockets push continuously. The `h
 
 ### HyperEVM JSON-RPC (`rpc` group)
 
-The `rpc` tools reach the separate HyperEVM JSON-RPC product (`https://rpc.hypedexer.com`, same `X-API-Key`). `hd_rpc_call` is a generic passthrough covering the entire read surface (`eth_*`, `net_*`, `web3_*`); typed convenience tools cover the headline reads (`hd_rpc_block_number`, `hd_rpc_call_contract`, `hd_rpc_get_logs`, `hd_rpc_get_block`). `hd_rpc_subscribe` snapshots an `eth_subscribe` stream (newHeads / logs / newPendingTransactions) over `wss://rpc.hypedexer.com`. State-mutating methods (`eth_sendRawTransaction`) are refused — the surface is read-only.
+> **Not deployed yet (opt-in).** As of 2026-07-01 `rpc.hypedexer.com` returns DNS NXDOMAIN, so every `rpc` call network-errors. The group is therefore excluded from the `all` preset and off by default. Enable it explicitly with `HYPEDEXER_MCP_TOOLS=all,rpc` once HypeDexer deploys the endpoint, or point `HYPEDEXER_RPC_URL` at a reachable HyperEVM JSON-RPC node.
+
+The `rpc` tools reach the separate HyperEVM JSON-RPC product (`https://rpc.hypedexer.com`, same `X-API-Key`). `hd_rpc_call` is a generic passthrough covering the entire read surface (`eth_*`, `net_*`, `web3_*`); typed convenience tools cover the headline reads (`hd_rpc_block_number`, `hd_rpc_call_contract`, `hd_rpc_get_logs`, `hd_rpc_get_block`). `hd_rpc_subscribe` snapshots an `eth_subscribe` stream (newHeads / logs / newPendingTransactions) over `wss://rpc.hypedexer.com`. State-mutating methods (`eth_sendRawTransaction`) are refused: the surface is read-only.
 
 ## How results are shaped (for agents)
 

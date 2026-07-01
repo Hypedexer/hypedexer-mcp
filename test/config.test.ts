@@ -2,12 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { loadConfig, resolveGroups } from '../src/config.js'
 
 describe('resolveGroups', () => {
-  it('expands the "all" preset minus info, and always includes public', () => {
+  it('expands the "all" preset minus the opt-in-only groups, and always includes public', () => {
     const g = resolveGroups('all', true)
     expect(g.has('public')).toBe(true)
     expect(g.has('hip3')).toBe(true)
     expect(g.has('evm')).toBe(true)
+    // info and rpc are opt-in only and excluded from the `all` preset.
     expect(g.has('info')).toBe(false)
+    expect(g.has('rpc')).toBe(false)
+  })
+
+  it('includes rpc only when named explicitly (dead endpoint, opt-in)', () => {
+    expect(resolveGroups('all', true).has('rpc')).toBe(false)
+    expect(resolveGroups('all,rpc', true).has('rpc')).toBe(true)
+    expect(resolveGroups('rpc', true).has('rpc')).toBe(true)
   })
 
   it('expands the "core" preset', () => {

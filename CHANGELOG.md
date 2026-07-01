@@ -8,6 +8,11 @@ First release candidate. Packaging and robustness hardening on top of the 0.1.0 
 - `engines.node` raised to `>=22.0.0` to match the real requirement of the WebSocket and rpc-subscribe tools (native `WebSocket` with custom upgrade headers).
 - `prepublishOnly` gate (lint, typecheck, test, build) so a publish can never ship without a freshly built `dist`.
 - GitHub Actions CI (lint, typecheck, test, build on Node 22).
+- Live validation against the real API surfaced two issues, both fixed:
+  - `rpc` group is now opt-in only (excluded from the `all` preset) because `rpc.hypedexer.com` is not deployed yet (DNS NXDOMAIN); enable with `HYPEDEXER_MCP_TOOLS=all,rpc` once the endpoint is live. The default surface drops from all-groups to `all` minus `info`/`rpc`.
+  - Mirror WebSocket collector now filters the `subscriptionResponse` ack frame, which shares the `{ channel, data }` envelope of real data and was being collected as a bogus item.
+- `hd_live_bbo` documents that the upstream mirror hub currently accepts the bbo subscription but emits no bbo frames (verified while l2Book streams normally for the same coin), and steers callers to `hd_live_l2_book` for top-of-book.
+- User-Agent header bumped to `hypedexer-mcp/1.0.0-rc.1`.
 
 ## 0.1.0
 

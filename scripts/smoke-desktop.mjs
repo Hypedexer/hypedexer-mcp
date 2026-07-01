@@ -18,10 +18,20 @@ await client.connect(transport)
 const { tools } = await client.listTools()
 const hd = tools.filter((t) => t.name.startsWith('hd_')).length
 const pub = tools.filter((t) => t.name.startsWith('hl_public_')).length
-console.log(`tools: ${tools.length}  (hd_=${hd}, hl_public_=${pub})  -> key+MCP_TOOLS loaded from .env: ${tools.length === 83 ? 'YES' : 'NO'}`)
+// Keyed hd_ tools appear only when BOTH the API key and a keyed MCP_TOOLS spec
+// loaded from .env, so hd_ > 0 is the real "did .env load" signal (exact count
+// depends on the preset; `all` excludes the opt-in-only info/rpc groups).
+console.log(
+  `tools: ${tools.length}  (hd_=${hd}, hl_public_=${pub})  -> key+MCP_TOOLS loaded from .env: ${hd > 0 && pub === 8 ? 'YES' : 'NO'}`,
+)
 
 const ov = await client.callTool({ name: 'hd_hip3_overview', arguments: {} })
-console.log('hd_hip3_overview:', ov.isError ? 'ERROR ' + ov.content?.[0]?.text?.slice(0,60) : JSON.stringify(ov.structuredContent?.data).slice(0, 90))
+console.log(
+  'hd_hip3_overview:',
+  ov.isError
+    ? 'ERROR ' + ov.content?.[0]?.text?.slice(0, 60)
+    : JSON.stringify(ov.structuredContent?.data).slice(0, 90),
+)
 
 const mids = await client.callTool({ name: 'hl_public_all_mids', arguments: {} })
 console.log('hl_public_all_mids BTC:', mids.structuredContent?.data?.BTC ?? 'n/a')

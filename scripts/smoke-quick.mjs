@@ -25,7 +25,10 @@ const universe = meta.structuredContent?.data?.universe ?? []
 console.log('perp universe size:', Array.isArray(universe) ? universe.length : 'n/a')
 
 // Error path: bad address should produce a steering error, not a crash
-const bad = await client.callTool({ name: 'hl_public_clearinghouse_state', arguments: { user: 'nope' } })
+const bad = await client.callTool({
+  name: 'hl_public_clearinghouse_state',
+  arguments: { user: 'nope' },
+})
 console.log('bad-address isError:', bad.isError, '| msg:', bad.content?.[0]?.text?.slice(0, 80))
 
 await client.close()

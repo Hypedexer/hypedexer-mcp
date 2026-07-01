@@ -3,7 +3,12 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
 const server = spawn('node', ['dist/index.js', '--http'], {
-  env: { ...process.env, HYPEDEXER_MCP_TOOLS: 'public', HYPEDEXER_MCP_HTTP_PORT: '3333', HYPEDEXER_LOG_LEVEL: 'error' },
+  env: {
+    ...process.env,
+    HYPEDEXER_MCP_TOOLS: 'public',
+    HYPEDEXER_MCP_HTTP_PORT: '3333',
+    HYPEDEXER_LOG_LEVEL: 'error',
+  },
   stdio: 'inherit',
 })
 await new Promise((r) => setTimeout(r, 1500))

@@ -28,14 +28,24 @@ export const KEYED_GROUPS: ReadonlySet<ToolGroup> = new Set(
   TOOL_GROUPS.filter((g) => g !== 'public'),
 )
 
+/**
+ * Groups excluded from the `all` preset: they must be opted into by name.
+ * - `info`: the raw `/info` escape hatch (advanced, unvalidated inputs).
+ * - `rpc`: the HyperEVM JSON-RPC group targets `rpc.hypedexer.com`, which is not
+ *   yet deployed (DNS NXDOMAIN as of 2026-07-01). Every call network-errors, so
+ *   it is off by default; enable it explicitly (`HYPEDEXER_MCP_TOOLS=all,rpc`)
+ *   once the endpoint is live or when pointing HYPEDEXER_RPC_URL at another host.
+ */
+const OPT_IN_ONLY: ReadonlySet<ToolGroup> = new Set<ToolGroup>(['info', 'rpc'])
+
 /** Named presets the user can pass to HYPEDEXER_MCP_TOOLS instead of a group list. */
 export const PRESETS: Record<string, ToolGroup[]> = {
   // Keyless smoke-test surface only.
   public: ['public'],
   // The everyday HypeDexer surface: high-traffic reads, no niche/heavy groups.
   core: ['public', 'fills', 'markets', 'analytics', 'traders', 'liquidations', 'funding', 'vaults'],
-  // Everything except the raw `/info` escape hatch (which must be opted into by name).
-  all: TOOL_GROUPS.filter((g) => g !== 'info'),
+  // Everything except the opt-in-only groups (`info`, `rpc`).
+  all: TOOL_GROUPS.filter((g) => !OPT_IN_ONLY.has(g)),
 }
 
 export type TransportKind = 'stdio' | 'http'
@@ -140,6 +150,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     requestTimeoutMs: num(env.HYPEDEXER_REQUEST_TIMEOUT_MS, DEFAULTS.requestTimeoutMs),
     maxResponseTokens: num(env.HYPEDEXER_MAX_RESPONSE_TOKENS, DEFAULTS.maxResponseTokens),
     logLevel,
-    userAgent: 'hypedexer-mcp/0.1.0',
+    userAgent: 'hypedexer-mcp/1.0.0-rc.1',
   }
 }

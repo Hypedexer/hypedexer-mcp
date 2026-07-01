@@ -201,4 +201,20 @@ describe('collectChannel (mirror mode)', () => {
     expect((r.items[0] as { isSnapshot: boolean }).isSnapshot).toBe(true)
     expect(r.stopped_by).toBe('max_items')
   })
+
+  it('ignores the subscriptionResponse ack frame (same envelope as data)', async () => {
+    const { p, ws } = start({ channel: 'allMids', mode: 'mirror', maxItems: 1 })
+    ws.fireOpen()
+    // The mirror hub echoes the subscribe as { channel: "subscriptionResponse", data: {...} },
+    // which shares the { channel, data } shape of real data frames and must not be collected.
+    ws.fireMessage({
+      channel: 'subscriptionResponse',
+      data: { method: 'subscribe', subscription: { type: 'allMids' } },
+    })
+    ws.fireMessage({ channel: 'allMids', data: { mids: { BTC: '61116.5' } } })
+    const r = await p
+    expect(r.item_count).toBe(1)
+    expect(r.message_count).toBe(1)
+    expect((r.items[0] as { mids: Record<string, string> }).mids.BTC).toBe('61116.5')
+  })
 })

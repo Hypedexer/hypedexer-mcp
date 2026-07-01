@@ -36,12 +36,21 @@ export type WsMode = 'multiplex' | 'mirror'
 
 /** Frame `type` values that are control/handshake frames, not data, on either protocol. */
 const CONTROL_TYPES = new Set([
+  'connected',
   'welcome',
   'subscription_added',
   'subscription_removed',
   'subscriptions_list',
   'subscriptionUpdate',
 ])
+
+/**
+ * Mirror-mode `channel` values that carry acks/control, not subscription data.
+ * The mirror hub echoes each `subscribe` back as `{ channel: "subscriptionResponse",
+ * data: { method, subscription } }`, the same envelope as a data frame, so it must
+ * be filtered explicitly or it pollutes the collected items.
+ */
+const MIRROR_CONTROL_CHANNELS = new Set(['subscriptionResponse'])
 
 /** Minimal structural type for the events a WHATWG WebSocket dispatches. */
 interface WsEvent {
@@ -279,7 +288,12 @@ export function collectChannel(opts: CollectOptions): Promise<CollectResult> {
 
       if (mode === 'mirror') {
         // Mirror data frame: { channel, data: <object> } — one item per frame.
-        if (typeof f.channel === 'string' && 'data' in f) {
+        // Skip the subscription-ack channel, which shares this envelope.
+        if (
+          typeof f.channel === 'string' &&
+          !MIRROR_CONTROL_CHANNELS.has(f.channel) &&
+          'data' in f
+        ) {
           messageCount++
           items.push(f.data)
           if (items.length >= maxItems) finishOk('max_items')

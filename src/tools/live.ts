@@ -52,6 +52,7 @@ async function collectLive(
   args: LiveArgs,
   ctx: ToolContext,
   label: string,
+  emptyHint?: string,
 ): Promise<ReturnType<typeof buildResult>> {
   const apiKey = ctx.config.apiKey
   if (!apiKey) {
@@ -91,7 +92,8 @@ async function collectLive(
   ]
   if (result.item_count === 0) {
     notes.push(
-      'No frames arrived in the window. Verify the coin/user filter and retry with a longer `seconds` window.',
+      emptyHint ??
+        'No frames arrived in the window. Verify the coin/user filter and retry with a longer `seconds` window.',
     )
   }
 
@@ -145,12 +147,22 @@ export const liveTools: ToolModule = [
     group: 'live',
     title: 'Stream best bid/offer (Live WS)',
     description:
-      'Live mirror channel `bbo`: top-of-book best bid and offer for one coin, updated as the book ' +
-      'moves. Opens the mirror socket, subscribes scoped to `coin`, and collects updates for a bounded ' +
-      'window. Lower bandwidth than l2Book. Point-in-time snapshot; call again for a fresh window.',
+      'Live mirror channel `bbo`: top-of-book best bid and offer for one coin. NOTE: as of 2026-07-01 ' +
+      'the upstream mirror hub accepts the bbo subscription but does not emit bbo frames (verified: it ' +
+      'stays silent while l2Book for the same coin streams normally). For reliable top-of-book, use ' +
+      'hd_live_l2_book and read the first level of each side. This tool is kept for when the upstream ' +
+      'channel starts emitting. Point-in-time snapshot; call again for a fresh window.',
     inputSchema: { coin: coinRequired, seconds: secondsSchema, max_items: maxItemsSchema },
     async handler(args, ctx) {
-      return collectLive('bbo', args, ctx, 'bbo')
+      return collectLive(
+        'bbo',
+        args,
+        ctx,
+        'bbo',
+        'The upstream mirror hub did not emit any bbo frames (a known gap as of 2026-07-01: the ' +
+          'subscription is accepted but no data is pushed). Use hd_live_l2_book and read the top level ' +
+          'of each side for best bid/offer instead.',
+      )
     },
   }),
 
