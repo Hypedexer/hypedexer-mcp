@@ -150,6 +150,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     requestTimeoutMs: num(env.HYPEDEXER_REQUEST_TIMEOUT_MS, DEFAULTS.requestTimeoutMs),
     maxResponseTokens: num(env.HYPEDEXER_MAX_RESPONSE_TOKENS, DEFAULTS.maxResponseTokens),
     logLevel,
-    userAgent: 'hypedexer-mcp/1.0.0-rc.1',
+    userAgent: 'hypedexer-mcp/1.0.0',
   }
 }

@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.0.0-rc.1 (unreleased)
+## 1.0.0 (2026-07-02)
 
-First release candidate. Packaging and robustness hardening on top of the 0.1.0 base, ahead of a stable 1.0.0 once the streams/live/rpc surfaces are validated against the live API.
+First stable release. Packaging and robustness hardening on top of the 0.1.0 base, with every surface (REST, both WebSocket hubs, RPC) live-validated against the real API.
 
 - Response budget now enforced on raw passthrough tools (`hl_public_*`, `hd_info_raw`, `hd_rpc_*`): oversized arrays are tail-truncated with a steering note and oversized objects are clipped with an explicit marker, so a single large upstream body can no longer blow the agent's context.
 - `engines.node` raised to `>=22.0.0` to match the real requirement of the WebSocket and rpc-subscribe tools (native `WebSocket` with custom upgrade headers).
@@ -12,7 +12,7 @@ First release candidate. Packaging and robustness hardening on top of the 0.1.0 
   - `rpc` group is now opt-in only (excluded from the `all` preset) because `rpc.hypedexer.com` is not deployed yet (DNS NXDOMAIN); enable with `HYPEDEXER_MCP_TOOLS=all,rpc` once the endpoint is live. The default surface drops from all-groups to `all` minus `info`/`rpc`.
   - Mirror WebSocket collector now filters the `subscriptionResponse` ack frame, which shares the `{ channel, data }` envelope of real data and was being collected as a bogus item.
 - All 8 Live mirror channels live-verified. `allMids`, `l2Book`, `allFills`, `userFills` deliver reliably. Documented the ones the upstream hub does not yet serve well: `bbo` (accepted but silent, steer to `l2Book`), `trades` ("Unsupported subscription" upstream, steer to `hd_stream_completed_trades`), `l4Book` (deep snapshots can exceed the runtime WebSocket decompression limit), `l4BookUpdates` (accepted but sparse). Each tool's description and the README carry the per-channel status.
-- User-Agent header bumped to `hypedexer-mcp/1.0.0-rc.1`.
+- User-Agent header set to `hypedexer-mcp/1.0.0`.
 
 ## 0.1.0
 

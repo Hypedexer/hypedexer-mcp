@@ -1,6 +1,6 @@
 {
   "name": "@hypedexer/mcp-server",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0",
   "description": "Model Context Protocol server for the HypeDexer Hyperliquid data API: read-only market, trading, HIP-3/HIP-4, EVM and builder analytics tools, plus keyless Hyperliquid public tools.",
   "license": "MIT",
   "author": "hypedexer",
