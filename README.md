@@ -1,19 +1,52 @@
-# HypeDexer MCP Server
+# @hypedexer/mcp-server
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server for the **HypeDexer Hyperliquid data API**. It gives any MCP client — Claude Desktop, Cursor, and others — read-only tools across HypeDexer's full surface: indexed Hyperliquid market data, trade fills, trader analytics, HIP-3 builder-deployed perps, HIP-4 outcome markets, HyperEVM data, and builder analytics over REST; both WebSocket hubs (the indexed multiplex channels and the Live mirror channels — order books, mids, fills) exposed as bounded-window snapshots; and the HyperEVM JSON-RPC product (`eth_*` reads plus `eth_subscribe`).
+> [Model Context Protocol](https://modelcontextprotocol.io) server for the [HypeDexer](https://hypedexer.com) Hyperliquid indexer: 83 read-only tools over the full API surface (REST, both WebSocket hubs, HyperEVM JSON-RPC), plus keyless Hyperliquid public tools so it works with no API key at all.
 
-It also ships a set of **keyless `hl_public_*` tools** that hit the free Hyperliquid public API directly, so the server boots and works end-to-end **with no API key** — enough to try it in 60 seconds.
+[![tools](https://img.shields.io/badge/tools-83%20read--only-8A2BE2?labelColor=333)](#tool-catalog)
+[![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.29-blue?labelColor=333)](https://github.com/modelcontextprotocol/typescript-sdk)
+[![node >= 22](https://img.shields.io/badge/node-%3E%3D22-3c873a?labelColor=333)](https://nodejs.org)
+[![tests](https://img.shields.io/badge/tests-71%20passing-brightgreen?labelColor=333)](#development)
+[![license MIT](https://img.shields.io/badge/license-MIT-blue?labelColor=333)](./LICENSE)
 
 ```
 your AI client  ──MCP──▶  hypedexer-mcp  ──▶  api.hypedexer.com   (keyed: hd_* tools)
                                           └─▶  api.hyperliquid.xyz (keyless: hl_public_* tools)
 ```
 
+---
+
+## Why this server
+
+If you've wired an agent to `api.hypedexer.com` directly, you've hit them all:
+
+- 3 different response envelopes depending on the endpoint, plus cursor, offset and time-window pagination on different routes.
+- Sentinel timestamps (`1970-01-01`), page-size-as-total counts, an ascending liquidation cursor that corrupts to year 2245.
+- WebSockets that push continuously while MCP tools are request/response, on two different hubs with two different message envelopes.
+- Responses big enough to blow an agent's entire context on one call.
+
+This server collapses all of that behind **one tool contract**: uniform pagination handles with a `hint` for the exact next call, a token budget that truncates with steering notes instead of flooding, errors that say how to recover, and quirks normalized once so agents never see the raw noise.
+
+### At a glance
+
+|                |                                                                                  |
+| -------------- | -------------------------------------------------------------------------------- |
+| **Coverage**   | 83 tools: ~88 REST endpoints + 13 WS channels (2 hubs) + HyperEVM JSON-RPC       |
+| **Keyless**    | 8 `hl_public_*` tools hit the free Hyperliquid API: boots with no key            |
+| **Groups**     | 17 env-gated groups, 3 presets (`public` / `core` / `all`)                       |
+| **Transports** | stdio (default) + streamable HTTP (per-session)                                  |
+| **Safety**     | Read-only by construction; state-mutating RPC methods are refused                |
+| **Runtime**    | Node >= 22, native `WebSocket`, no `ws` dependency                               |
+| **Tests**      | 71 unit tests (mocked fetch + in-memory MCP client) + gated live suite           |
+
+> **AI coding agents:** contributing to this repo? Read [`AGENTS.md`](./AGENTS.md) first: verification loop, the tool-module pattern, hard-won MCP lessons, and the upstream quirks you must not "fix". Consuming the server through an MCP client? The contract is in [How results are shaped](#how-results-are-shaped-for-agents) and in each tool's description.
+
+---
+
 ## Quick start (no API key)
 
 Point your client at the server. With no key, the keyless `public` group is enabled.
 
-**Claude Desktop** — add to `claude_desktop_config.json`:
+**Claude Desktop**: add to `claude_desktop_config.json`:
 
 ```json
 {
@@ -48,7 +81,7 @@ Generate a key at [app.hypedexer.com](https://www.app.hypedexer.com/) and set `H
 }
 ```
 
-**Cursor** — add to `~/.cursor/mcp.json` (same shape):
+**Cursor**: add to `~/.cursor/mcp.json` (same shape):
 
 ```json
 {
@@ -77,7 +110,7 @@ HYPEDEXER_API_KEY=… HYPEDEXER_MCP_TRANSPORT=http hypedexer-mcp
 
 | Env | Purpose | Default |
 |---|---|---|
-| `HYPEDEXER_API_KEY` | Unlocks the `hd_*` tools. Absent → only keyless `public`. | _(none)_ |
+| `HYPEDEXER_API_KEY` | Unlocks the `hd_*` tools. Absent: only keyless `public`. | _(none)_ |
 | `HYPEDEXER_MCP_TOOLS` | Tool groups: a preset (`public`/`core`/`all`) or a comma list. | `all` |
 | `HYPEDEXER_MCP_TRANSPORT` | `stdio` or `http`. | `stdio` |
 | `HYPEDEXER_MCP_HTTP_PORT` / `_HOST` | HTTP transport bind. | `3000` / `127.0.0.1` |
@@ -93,11 +126,11 @@ HYPEDEXER_API_KEY=… HYPEDEXER_MCP_TRANSPORT=http hypedexer-mcp
 
 ### `.env` file (auto-loaded)
 
-On startup the server loads a `.env` file into the environment — no dependency, no flag. **Already-set variables always win**, so a client's `env` block (or a shell export) still takes precedence over the file. Search order, first hit wins:
+On startup the server loads a `.env` file into the environment, with no dependency and no flag. **Already-set variables always win**, so a client's `env` block (or a shell export) still takes precedence over the file. Search order, first hit wins:
 
 1. `$HYPEDEXER_ENV_FILE`, if set.
 2. `./.env` in the current working directory.
-3. `.env` at the package root (next to `dist/`) — robust even when the launcher sets an unrelated cwd.
+3. `.env` at the package root (next to `dist/`), robust even when the launcher sets an unrelated cwd.
 
 Copy [`.env.example`](./.env.example) to `.env`, drop your key in, and your MCP client config can stay env-free:
 
@@ -109,7 +142,7 @@ Supports `KEY=value`, `export KEY=value`, `#` comments, `'single'`/`"double"` qu
 
 ### Windows + WSL (Claude Desktop)
 
-Claude Desktop runs on Windows, so it must spawn the server through `wsl.exe`. Two gotchas: an **nvm-installed `node` is not on the non-interactive PATH** (so `"args": ["node", …]` fails with `command not found`), and `env` variables don't cross into WSL cleanly. The bundled launcher [`scripts/launch.sh`](./scripts/launch.sh) solves both — it resolves `node` via nvm (quietly, stdout stays clean for the MCP stream) and execs the server. Put your key in `.env` at the repo root and the Desktop config becomes trivial:
+Claude Desktop runs on Windows, so it must spawn the server through `wsl.exe`. Two gotchas: an **nvm-installed `node` is not on the non-interactive PATH** (so `"args": ["node", …]` fails with `command not found`), and `env` variables don't cross into WSL cleanly. The bundled launcher [`scripts/launch.sh`](./scripts/launch.sh) solves both: it resolves `node` via nvm (quietly, stdout stays clean for the MCP stream) and execs the server. Put your key in `.env` at the repo root and the Desktop config becomes trivial:
 
 ```json
 {
@@ -122,7 +155,7 @@ Claude Desktop runs on Windows, so it must spawn the server through `wsl.exe`. T
 }
 ```
 
-No `env`, no `WSLENV`, no key pasted into JSON. Restart Claude Desktop. (On macOS/Linux with `node` on PATH, just use `"command": "node", "args": ["/path/to/dist/index.js"]` — or `npx` as shown above — and the same `.env` is picked up.)
+No `env`, no `WSLENV`, no key pasted into JSON. Restart Claude Desktop. (On macOS/Linux with `node` on PATH, just use `"command": "node", "args": ["/path/to/dist/index.js"]`, or `npx` as shown above, and the same `.env` is picked up.)
 
 ### Tool groups & presets
 
@@ -161,10 +194,10 @@ All tools are read-only. `hl_public_*` need no key; `hd_*` need `HYPEDEXER_API_K
 
 ### WebSocket channels as snapshots (`streams` + `live` groups)
 
-MCP tools are request/response; HypeDexer's WebSockets push continuously. The `hd_stream_*` and `hd_live_*` tools bridge the gap: each opens the socket, subscribes to one channel, collects pushed messages for a bounded window (`seconds`, 1-30, default 5, or until `max_items`), then closes and returns the batch — a **point-in-time snapshot, not a standing subscription**. Call again for a fresh window.
+MCP tools are request/response; HypeDexer's WebSockets push continuously. The `hd_stream_*` and `hd_live_*` tools bridge the gap: each opens the socket, subscribes to one channel, collects pushed messages for a bounded window (`seconds`, 1-30, default 5, or until `max_items`), then closes and returns the batch: a **point-in-time snapshot, not a standing subscription**. Call again for a fresh window.
 
-- **`streams`** — the indexed *multiplex* endpoint (`wss://.../ws`): `completed_trades` (optional `user` scope), `fills_spot` (the only working spot-fill source, since REST `/spot/*` is permanently broken), `recent_activity`, `liquidation`, `hip4_events`.
-- **`live`** — the Live *mirror* endpoint (`wss://.../ws?mode=mirror`): order books (`l2Book`/`l4Book`/`l4BookUpdates`), `bbo`, `trades` (per `coin`), the `allFills` firehose, `userFills` (per `user`), and `allMids`. Book channels return the current snapshot in the first frame.
+- **`streams`**: the indexed *multiplex* endpoint (`wss://.../ws`): `completed_trades` (optional `user` scope), `fills_spot` (the only working spot-fill source, since REST `/spot/*` is broken upstream), `recent_activity`, `liquidation`, `hip4_events`.
+- **`live`**: the Live *mirror* endpoint (`wss://.../ws?mode=mirror`): order books (`l2Book`/`l4Book`/`l4BookUpdates`), `bbo`, `trades` (per `coin`), the `allFills` firehose, `userFills` (per `user`), and `allMids`. Book channels return the current snapshot in the first frame.
 
   Per-channel status (live-verified 2026-07-01, the upstream mirror hub is still maturing):
 
@@ -188,26 +221,70 @@ The `rpc` tools reach the separate HyperEVM JSON-RPC product (`https://rpc.hyped
 
 These follow Anthropic's [tool-design guidance](https://www.anthropic.com/engineering/writing-tools-for-agents):
 
-- **Structured + concise.** Every tool returns `structuredContent` (`{ data, pagination?, meta?, notes? }`) plus a one-line text summary.
+- **Structured + readable.** Every tool serializes the real data into the text content block (what every client shows the model) and mirrors it in `structuredContent` (`{ data, pagination?, meta?, notes? }`).
 - **Uniform pagination.** List tools return a `pagination` handle with `has_more` and the relevant `next_cursor` / `next_offset` / `next_end_time`, plus a `hint` telling the agent the exact next call. No infinite loops.
 - **Token budget with steering.** Oversized list results are truncated and the `notes` say how to narrow the query.
 - **Recovery-steering errors.** Failures return a specific fix (e.g. "set `HYPEDEXER_API_KEY`", "use `order=desc`"), never an opaque code.
-- **Quirks normalized once.** 1970 sentinels → `null`, page-size-as-total dropped, ascending-cursor corruption refused, `not_yet_live` surfaces noted, IPv4 node addresses renamed — agents never see the raw noise. See [`DESIGN.md`](./DESIGN.md).
+- **Quirks normalized once.** 1970 sentinels become `null`, page-size-as-total is dropped, ascending-cursor corruption is refused, `not_yet_live` surfaces are noted, IPv4 node addresses are renamed; agents never see the raw noise. See [`DESIGN.md`](./DESIGN.md).
 - **`response_format`.** Pass `detailed` when you need ids to chain follow-up calls; `concise` (default) for high-signal fields.
+
+## Known upstream quirks this server absorbs
+
+Condensed reference; the full catalog with rationale lives in [`DESIGN.md`](./DESIGN.md).
+
+| Upstream | Server posture |
+|---|---|
+| 3 response envelope families (`APIResponse`, bare, HIP-4) | Normalized into one `{ data, pagination, meta }` shape |
+| Cursor / offset / time-window pagination per route | One `pagination` handle with a ready-to-use `hint` |
+| `/liquidations/?order=asc` corrupt cursor (year 2245) | Ascending iteration refused with a steering error |
+| Sentinel timestamps (`1970-01-01`) | Returned as `null` |
+| `total_count` sometimes = page size | Dropped rather than passed through wrong |
+| HIP-4 `not_yet_live` responses | Surfaced in `meta` with the upstream message, not faked as empty |
+| Gossip leaderboard `address` is an IPv4 | Renamed to a node-IP field |
+| Unbounded upstream response sizes | 25k-token budget, tail-truncation with steering notes |
+| Mirror WS ack frame mimics the data envelope | Filtered out of snapshots |
+| Dead / degraded channels (`rpc` host, `bbo`, `trades`, `l4Book`) | Gated or flagged in tool descriptions with an alternative |
 
 ## Development
 
 ```bash
 pnpm install
-pnpm build          # tsup → dist/
+pnpm build          # tsup -> dist/
 pnpm typecheck      # strict tsc
-pnpm test           # vitest (mocked fetch)
+pnpm test           # vitest (mocked fetch), 71 tests
 pnpm test:live      # also runs live keyless tests against api.hyperliquid.xyz
 pnpm smoke          # build + in-memory MCP client smoke (keyless)
 pnpm inspect        # build + MCP Inspector
 ```
 
 Architecture, the full tool catalog, and the applied tool-design principles live in [`DESIGN.md`](./DESIGN.md).
+
+## Repository layout
+
+```
+hypedexer-mcp/
+├── src/
+│   ├── core/           vendored transport: HttpClient, errors, pagination, time, envelopes
+│   ├── hypedexer/      keyed API client, quirks layer, WS + RPC clients
+│   ├── hyperliquid/    keyless public API client
+│   ├── tools/          17 tool groups + shared contracts (schemas, pagination, output, errors)
+│   └── transports/     stdio + streamable HTTP
+├── test/               71 unit tests + gated live suite
+├── scripts/            launch.sh (Claude Desktop WSL) + smoke scripts
+├── DESIGN.md           design doc: catalog, layering, tool-design guidance
+├── AGENTS.md           contribution guide for AI coding agents
+└── AUDIT.md            multi-agent audit report (2026-06-30)
+```
+
+## Contributing
+
+A few non-negotiables (the full list is in [`AGENTS.md`](./AGENTS.md)):
+
+- **All four checks must pass:** `pnpm lint && pnpm typecheck && pnpm test && pnpm build`.
+- **ESM imports carry the `.js` extension** (`--moduleResolution NodeNext`).
+- **Comments in English**, and only where the *why* is non-obvious.
+- **No em-dash characters** anywhere: code, comments, docs, commit messages.
+- **stdout belongs to the MCP stream**; log through `src/logger.ts` (stderr).
 
 ## License
 
