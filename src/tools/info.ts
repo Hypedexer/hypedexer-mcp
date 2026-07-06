@@ -31,7 +31,7 @@ export const infoTools: ToolModule = [
       'optional `params` object of extra fields, which are merged into the request body alongside ' +
       'the type. Returns the upstream payload directly. Most users should prefer the dedicated ' +
       'typed tools (hd_fills_search, funding, vaults, hip3, ...) which validate inputs, paginate, ' +
-      'and repair known quirks — reach for this only for a type with no first-class tool yet. ' +
+      'and repair known quirks - reach for this only for a type with no first-class tool yet. ' +
       'Note: the dispatcher wraps `currentFundingRates` and `vaultList` in an API envelope where ' +
       'REST returns them bare; both are auto-unwrapped here for parity, so you always get the raw data.',
     inputSchema: {

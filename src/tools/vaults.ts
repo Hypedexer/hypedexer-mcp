@@ -184,7 +184,7 @@ export const vaultsTools: ToolModule = [
     description:
       'Per-vault equity time-series for one depositor address (which vaults they hold and how much). ' +
       'Time-window paginated: newest-first, page older with end_time=pagination.next_end_time. Note: this ' +
-      'is frequently empty — only addresses that actively deposit into vaults return rows, so an empty ' +
+      'is frequently empty - only addresses that actively deposit into vaults return rows, so an empty ' +
       'result usually means "this user holds no vault equity", not an error.',
     inputSchema: {
       user: addressSchema.describe('Depositor wallet address, 0x-prefixed 40 hex chars.'),

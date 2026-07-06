@@ -5,7 +5,7 @@ import type { Logger } from '../logger.js'
 
 /**
  * The runtime dependencies every tool handler receives. `hd` is `null` when no
- * HypeDexer API key is configured — only `public`-group tools (which use `hl`)
+ * HypeDexer API key is configured - only `public`-group tools (which use `hl`)
  * run in that mode, and they are the only ones registered, so a handler that
  * needs `hd` can assert it.
  */

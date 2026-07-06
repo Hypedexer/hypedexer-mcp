@@ -105,7 +105,7 @@ export const fillsTools: ToolModule = [
     group: 'fills',
     title: 'Count Hyperliquid fills',
     description:
-      'Total count of perp fills matching an optional coin and/or time window — without returning the rows. Use this to size a query before paging.',
+      'Total count of perp fills matching an optional coin and/or time window - without returning the rows. Use this to size a query before paging.',
     inputSchema: {
       coin: coinSchema.optional(),
       start_time: startTimeSchema,

@@ -8,7 +8,7 @@ import { type ToolModule, defineTool } from './types.js'
  * Market-wide overview metrics (HypeDexer Data API, `/overview/*`).
  *
  * These are aggregate, exchange-level views (24h headline stats, 10-day daily
- * series, per-user coin breakdown) — distinct from the per-trade `fills` tools.
+ * series, per-user coin breakdown) - distinct from the per-trade `fills` tools.
  * All endpoints use the APIResponse envelope.
  */
 export const marketsTools: ToolModule = [
@@ -55,7 +55,7 @@ export const marketsTools: ToolModule = [
     title: 'Hyperliquid 10-day daily series',
     description:
       'Last 10 days of daily aggregates. view="volume" (default) returns one row per ' +
-      'day ({date, volume}) — pass an optional `user` to scope volume to a single ' +
+      'day ({date, volume}) - pass an optional `user` to scope volume to a single ' +
       'trader, omit it for the whole exchange. view="pnl" returns global daily realized ' +
       'PnL broken down by coin ({date, coin, pnl}); PnL is global-only and ignores `user`. ' +
       'Returns the full window in one call (no pagination).',
@@ -102,7 +102,7 @@ export const marketsTools: ToolModule = [
       "A single trader's all-time activity split by coin: one row per asset with " +
       '{coin, volume, fills}, sorted by volume. Requires a wallet `user`. ' +
       'Caveat: an unknown or mistyped address returns HTTP 200 with an empty array ' +
-      '(not a 422), so an empty result usually means the address has no history — ' +
+      '(not a 422), so an empty result usually means the address has no history - ' +
       'or was typed wrong. Returns the full breakdown in one call (no pagination).',
     inputSchema: {
       user: addressSchema.describe('Wallet address to break down by coin (required).'),

@@ -22,7 +22,7 @@ import { type ToolModule, defineTool } from './types.js'
  * transactions, the global transaction/log feeds, the L1<->EVM ledger and bridge
  * event streams, per-user ledger views, and the HIP-3 backstop tables. Every
  * endpoint shares the `APIResponse<T>` envelope (`getApiList` / `getApiSingle`)
- * and is offset-paginated — there is no cursor anywhere under `/evm`. Time
+ * and is offset-paginated - there is no cursor anywhere under `/evm`. Time
  * filters are sent as ISO-8601 snake_case (`start_time`/`end_time`); epoch-ms is
  * silently ignored upstream, so always pass ISO timestamps.
  */
@@ -261,7 +261,7 @@ export const evmTools: ToolModule = [
           pagination: offsetPagination(page, args.offset, args.limit),
           meta: listMeta(page, path),
           notes: [
-            'Data quirk: absent topics (topic1/topic2/topic3) are empty strings "", not null — treat "" as "no topic".',
+            'Data quirk: absent topics (topic1/topic2/topic3) are empty strings "", not null - treat "" as "no topic".',
           ],
         },
         { summary: 'HyperEVM event logs.', maxTokens: ctx.config.maxResponseTokens },
@@ -358,7 +358,7 @@ export const evmTools: ToolModule = [
     title: 'HyperEVM per-user ledger',
     description:
       'One trader\'s HyperEVM ledger, selected by `view`. view="ledger_events" (default) returns the per-user ' +
-      'ledger event stream (incoming + outgoing, with counterparty, token, amount, tx_hash) — offset-paginated ' +
+      'ledger event stream (incoming + outgoing, with counterparty, token, amount, tx_hash) - offset-paginated ' +
       '(page with offset=pagination.next_offset) and filterable by a single `event_type` and/or a time window ' +
       '(start_time/end_time, ISO-8601). view="ledger_summary" returns aggregates per action type ' +
       '(count, total_amount, tokens[]) in one call (not paginated; handy for token discovery). REQUIRES `address`. ' +

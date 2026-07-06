@@ -75,7 +75,7 @@ export function handleToolError(err: unknown): ToolResult {
     return errorResult(
       `WebSocket authentication/handshake failed: ${err.message}`,
       'Set a valid HYPEDEXER_API_KEY. If the key is valid, you may be rate limited (429) on rapid ' +
-        'reconnects — wait a few seconds before retrying.',
+        'reconnects - wait a few seconds before retrying.',
     )
   }
 

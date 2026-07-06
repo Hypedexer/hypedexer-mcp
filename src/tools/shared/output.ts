@@ -7,7 +7,7 @@ export function estimateTokens(s: string): number {
 }
 
 export interface ResultPayload {
-  /** The primary payload — an array for list tools, an object for single-record tools. */
+  /** The primary payload - an array for list tools, an object for single-record tools. */
   data: unknown
   pagination?: PaginationOut
   /** Endpoint-level metadata (execution time, family, status notes). */
@@ -130,7 +130,7 @@ export function rawResult(
 
 /**
  * Render the content text block. CRITICAL: the actual data must live here, not
- * only in structuredContent — many MCP clients (incl. Claude Desktop) surface
+ * only in structuredContent - many MCP clients (incl. Claude Desktop) surface
  * only the text block to the model when no outputSchema is declared. So we emit a
  * one-line summary followed by the full JSON payload. (MCP spec: a tool with
  * structured content SHOULD also return the serialized JSON in a text block.)

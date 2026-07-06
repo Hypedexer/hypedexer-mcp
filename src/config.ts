@@ -113,7 +113,7 @@ export function resolveGroups(spec: string, hasKey: boolean): Set<ToolGroup> {
       out.add(token as ToolGroup)
     }
   }
-  // `public` is always available — it is the keyless smoke-test surface.
+  // `public` is always available - it is the keyless smoke-test surface.
   out.add('public')
   if (!hasKey) {
     for (const g of [...out]) {

@@ -15,7 +15,7 @@ interface JsonRpcResponse {
   error?: { code?: number; message?: string; data?: unknown }
 }
 
-/** Methods that mutate chain state — refused by the read-only RPC surface. */
+/** Methods that mutate chain state - refused by the read-only RPC surface. */
 export const RPC_WRITE_METHODS = new Set(['eth_sendRawTransaction', 'eth_sendTransaction'])
 
 export interface RpcClientOptions {
@@ -133,7 +133,7 @@ export interface EthSubscribeResult {
  * Open the JSON-RPC WebSocket, run a single `eth_subscribe`, collect the
  * `eth_subscription` notifications for a bounded window, then close. Adapts the
  * push subscription to a request/response snapshot, the same way collectChannel
- * does for the HypeDexer hub — but over the Ethereum JSON-RPC WS protocol.
+ * does for the HypeDexer hub - but over the Ethereum JSON-RPC WS protocol.
  */
 export function collectEthSubscription(opts: EthSubscribeOptions): Promise<EthSubscribeResult> {
   const WS = (opts.WebSocketImpl ?? (globalThis as { WebSocket?: unknown }).WebSocket) as

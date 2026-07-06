@@ -142,7 +142,7 @@ export const buildersTools: ToolModule = [
       'returns market-wide builder stats for one timeframe (current/previous totals + variations percentages). ' +
       'view="all_timeframes" returns the same blocks keyed by 1h/24h/7d/30d in a single call. view="one" ' +
       'returns stats for a single builder address (REQUIRES address) and adds a per-coin breakdown. Note: any ' +
-      'valid 0x address is queryable — an unknown/unregistered builder still returns 200 with builderName=null, ' +
+      'valid 0x address is queryable - an unknown/unregistered builder still returns 200 with builderName=null, ' +
       'and variations.*Pct fields are null when the previous period was zero. Returns the raw stats object.',
     inputSchema: {
       view: viewSchema(

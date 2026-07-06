@@ -37,4 +37,4 @@ const mids = await client.callTool({ name: 'hl_public_all_mids', arguments: {} }
 console.log('hl_public_all_mids BTC:', mids.structuredContent?.data?.BTC ?? 'n/a')
 
 await client.close()
-console.log('DESKTOP SIMULATION OK — this is exactly what Claude Desktop will run')
+console.log('DESKTOP SIMULATION OK - this is exactly what Claude Desktop will run')

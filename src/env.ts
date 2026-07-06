@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
  *   3. the package root next to dist/ (robust when the launcher sets an
  *      unrelated cwd, e.g. Claude Desktop spawning via wsl.exe)
  *
- * Missing/unreadable files are ignored. Nothing is ever written to stdout —
+ * Missing/unreadable files are ignored. Nothing is ever written to stdout -
  * the stdio transport owns it; diagnostics go to stderr only.
  */
 export function loadDotenv(): void {

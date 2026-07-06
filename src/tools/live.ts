@@ -5,7 +5,7 @@ import { addressSchema, coinSchema, z } from './shared/schemas.js'
 import { type ToolModule, defineTool } from './types.js'
 
 /**
- * Live (mirror) WebSocket channels — Hyperliquid live feeds proxied by HypeDexer
+ * Live (mirror) WebSocket channels - Hyperliquid live feeds proxied by HypeDexer
  * on `wss://api.hypedexer.com/ws?mode=mirror`. These differ from the indexed
  * `streams` group: a separate endpoint (`?mode=mirror`), separate subscription
  * types, and a `{ channel, data: {...} }` envelope (one data object per frame,
@@ -114,7 +114,7 @@ export const liveTools: ToolModule = [
     group: 'live',
     title: 'Stream the live perp-fill firehose (Live WS)',
     description:
-      'Live mirror channel `allFills`: every perp fill on Hyperliquid, globally — the firehose. Opens ' +
+      'Live mirror channel `allFills`: every perp fill on Hyperliquid, globally - the firehose. Opens ' +
       'wss://.../ws?mode=mirror, subscribes, and collects fills for a bounded window. High volume on ' +
       'busy markets, so it usually fills `max_items` fast. Point-in-time snapshot; call again for a ' +
       'fresh window. For one wallet use hd_live_user_fills.',

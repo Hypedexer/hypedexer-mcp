@@ -19,7 +19,7 @@ export interface BuiltServer {
 
 /**
  * Build a fully-wired MCP server: construct the clients, assemble the tool
- * context, and register every enabled tool. Transport-agnostic — the caller
+ * context, and register every enabled tool. Transport-agnostic - the caller
  * connects the returned `server` to stdio or HTTP.
  */
 export function createServer(
@@ -42,7 +42,7 @@ export function createServer(
     : null
 
   if (!hd) {
-    logger.warn('no HYPEDEXER_API_KEY set — only the keyless `public` tool group is enabled')
+    logger.warn('no HYPEDEXER_API_KEY set - only the keyless `public` tool group is enabled')
   }
 
   const ctx: ToolContext = { hd, hl, config, logger }
@@ -54,7 +54,7 @@ export function createServer(
       instructions:
         'HypeDexer MCP server: read-only access to Hyperliquid market, trading, HIP-3, HIP-4, ' +
         'EVM and builder analytics via the HypeDexer data API, plus keyless Hyperliquid public ' +
-        'tools (hl_public_*). List tools return a `pagination` handle — follow its `hint` to page. ' +
+        'tools (hl_public_*). List tools return a `pagination` handle - follow its `hint` to page. ' +
         'Pass response_format="detailed" when you need ids to chain follow-up calls.',
     },
   )

@@ -85,7 +85,7 @@ async function collect(
 
   const notes = [
     'Point-in-time WebSocket snapshot: the stream was opened, subscribed, drained for the window, ' +
-      'then closed. This is not a continuous subscription — call again for a fresh window.',
+      'then closed. This is not a continuous subscription - call again for a fresh window.',
     ...result.warnings,
   ]
   if (result.item_count === 0) {
@@ -114,7 +114,7 @@ export const streamsTools: ToolModule = [
       'round-trip trades pushed live for a bounded window. This is a high-volume channel (~2 msgs/s ' +
       'market-wide), so it usually fills `max_items` quickly. Pass `user` to scope to one wallet. Each ' +
       'item has the same shape as a REST trade-history row. Returns a point-in-time batch, not a ' +
-      'standing subscription — call again for a fresh window.',
+      'standing subscription - call again for a fresh window.',
     inputSchema: {
       user: addressSchema
         .optional()
@@ -174,7 +174,7 @@ export const streamsTools: ToolModule = [
     description:
       'Open the HypeDexer WebSocket, subscribe to the `liquidation` channel (note: singular upstream ' +
       'channel name), and collect liquidation events pushed live for a bounded window. This is a ' +
-      'low-frequency channel and is often idle, so an empty result is normal — use a longer `seconds` ' +
+      'low-frequency channel and is often idle, so an empty result is normal - use a longer `seconds` ' +
       'window if you need to catch events. Returns a point-in-time batch; call again for a fresh window.',
     inputSchema: {
       seconds: secondsSchema,
@@ -192,7 +192,7 @@ export const streamsTools: ToolModule = [
     description:
       'Open the HypeDexer WebSocket, subscribe to the `hip4_events` channel, and collect HIP-4 ' +
       'prediction-market events pushed live for a bounded window. This is a low-frequency channel and ' +
-      'is often idle, so an empty result is normal — use a longer `seconds` window if you need to catch ' +
+      'is often idle, so an empty result is normal - use a longer `seconds` window if you need to catch ' +
       'events. Returns a point-in-time batch; call again for a fresh window.',
     inputSchema: {
       seconds: secondsSchema,

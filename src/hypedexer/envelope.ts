@@ -3,9 +3,9 @@ import type { APIResponse, Hip4Envelope, Page, PageMeta, Single } from '../core/
 /**
  * The HypeDexer API ships three response envelope families (see ENDPOINTS.md):
  *
- *  - `apiResponse` — `{ success, data, next_cursor, has_more, total_count, ... }`
- *  - `bare`        — the payload directly (array or object), no wrapper
- *  - `hip4`        — `{ status, count, data, message, testnet_docs }`
+ *  - `apiResponse` - `{ success, data, next_cursor, has_more, total_count, ... }`
+ *  - `bare`        - the payload directly (array or object), no wrapper
+ *  - `hip4`        - `{ status, count, data, message, testnet_docs }`
  *
  * Tools never see these differences: every list normalizes to `Page<T>` and every
  * single record to `Single<T>`, both carrying a uniform `PageMeta`.

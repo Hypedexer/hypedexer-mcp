@@ -18,7 +18,7 @@ import { type ToolModule, defineTool } from './types.js'
  *
  * These endpoints return precomputed rollups over a lookback window rather than
  * raw rows: fill activity, priority-fee economics, and liquidation totals. They
- * are cheap, single-shot snapshots — none are paginated except the two
+ * are cheap, single-shot snapshots - none are paginated except the two
  * priority-fee chart/leaderboard list views, which return the full set in one call.
  */
 export const analyticsTools: ToolModule = [
@@ -58,12 +58,12 @@ export const analyticsTools: ToolModule = [
     title: 'Hyperliquid priority-fee analytics',
     description:
       'Priority-fee (gas tip) economics, in three views selected by `view`:\n' +
-      '- "stats" (default): a single rollup over a recent window — fills paying priority, total/avg/min/max ' +
+      '- "stats" (default): a single rollup over a recent window - fills paying priority, total/avg/min/max ' +
       'priority gas, and unique payers. Set hours (1-168, default 1).\n' +
       '- "daily": a time series of per-day priority-fee totals (fills, fillsWithFee, totalGas, uniqueUsers). ' +
       'Defaults to a ~29-day lookback; narrow it with start_time/end_time. Returned as a list.\n' +
       '- "leaderboard": top gossip nodes ranked by priority gas contributed (totalGas, count, daysActive). ' +
-      'Each row is keyed by node, not by wallet — the node IPv4 is surfaced as `nodeIp`. Use limit (1-200) to cap rows.\n' +
+      'Each row is keyed by node, not by wallet - the node IPv4 is surfaced as `nodeIp`. Use limit (1-200) to cap rows.\n' +
       'These views return everything in one call (no pagination).',
     inputSchema: {
       view: viewSchema(

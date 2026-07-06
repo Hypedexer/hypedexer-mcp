@@ -8,9 +8,9 @@ import { type ToolModule, defineTool } from './types.js'
  * HyperEVM JSON-RPC (HypeDexer RPC product, https://rpc.hypedexer.com).
  *
  * Standard Ethereum JSON-RPC over HTTP, plus eth_subscribe over WebSocket. There
- * is no OpenAPI spec — the surface is the Ethereum JSON-RPC contract. The generic
+ * is no OpenAPI spec - the surface is the Ethereum JSON-RPC contract. The generic
  * `hd_rpc_call` reaches any read method; the typed tools cover the headline ones.
- * State-mutating methods (eth_sendRawTransaction) are refused — this surface is
+ * State-mutating methods (eth_sendRawTransaction) are refused - this surface is
  * read-only. Auth is the same `X-API-Key` as the rest of the server.
  */
 
@@ -44,7 +44,7 @@ export const rpcTools: ToolModule = [
       'Generic HyperEVM JSON-RPC passthrough (POST https://rpc.hypedexer.com). Supply any standard ' +
       'Ethereum read method and its positional params; the tool sends ' +
       '{"jsonrpc":"2.0","method":<method>,"params":<params>} and returns the `result`. Covers the whole ' +
-      'read surface (eth_*, net_*, web3_*) — e.g. eth_chainId, eth_gasPrice, eth_getBalance, ' +
+      'read surface (eth_*, net_*, web3_*) - e.g. eth_chainId, eth_gasPrice, eth_getBalance, ' +
       'eth_getTransactionReceipt, eth_getCode, eth_feeHistory. State-mutating methods ' +
       '(eth_sendRawTransaction) are refused. For the common reads, the typed tools (hd_rpc_block_number, ' +
       'hd_rpc_call_contract, hd_rpc_get_logs, hd_rpc_get_block) are more ergonomic.',
@@ -194,7 +194,7 @@ export const rpcTools: ToolModule = [
     description:
       'eth_subscribe over the JSON-RPC WebSocket (wss://rpc.hypedexer.com): subscribe to newHeads, logs, ' +
       'or newPendingTransactions, collect the pushed notifications for a bounded window, then ' +
-      'unsubscribe and close. Point-in-time snapshot, not a standing subscription — call again for a ' +
+      'unsubscribe and close. Point-in-time snapshot, not a standing subscription - call again for a ' +
       'fresh window. For "logs", pass a `filter` object (address/topics) to bound the volume.',
     inputSchema: {
       subscription_type: z

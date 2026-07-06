@@ -31,7 +31,7 @@ export interface ToolDef<Shape extends ZodRawShape = ZodRawShape> {
   group: ToolGroup
   title: string
   description: string
-  /** Zod raw shape — passed straight to the SDK as `inputSchema`. */
+  /** Zod raw shape - passed straight to the SDK as `inputSchema`. */
   inputSchema: Shape
   annotations?: ToolAnnotations
   handler: (args: InferShape<Shape>, ctx: ToolContext) => Promise<ToolResult>

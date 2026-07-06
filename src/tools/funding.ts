@@ -28,7 +28,7 @@ export const fundingTools: ToolModule = [
     title: 'Predicted funding rates (all coins)',
     description:
       'Snapshot of predicted next funding rates across venues for every perp coin (~230 entries; ' +
-      'some carry a zero rate). Returns the full list in one shot — there is no pagination and no ' +
+      'some carry a zero rate). Returns the full list in one shot - there is no pagination and no ' +
       'inputs. Use this for a market-wide view of upcoming funding; for realized history of a single ' +
       'coin use hd_funding_history.',
     inputSchema: {},
@@ -53,7 +53,7 @@ export const fundingTools: ToolModule = [
       'Realized funding-rate history for one perp coin over an optional time window. `coin` is ' +
       'required (a perp ticker like "BTC"). Rows carry a string-encoded funding rate and premium plus ' +
       'an epoch-ms `time`. Time-window paginated: results run newest-first, and pagination.next_end_time ' +
-      'is the cursor — call again with end_time=pagination.next_end_time to fetch older records.',
+      'is the cursor - call again with end_time=pagination.next_end_time to fetch older records.',
     inputSchema: {
       coin: coinSchema,
       start_time: startTimeSchema,
@@ -91,7 +91,7 @@ export const fundingTools: ToolModule = [
     description:
       "A wallet's perp funding payments and receipts over an optional time window. `user` (a wallet " +
       'address) is required. Rows carry an epoch-ms `time`. Time-window paginated: results run ' +
-      'newest-first, and pagination.next_end_time is the cursor — call again with ' +
+      'newest-first, and pagination.next_end_time is the cursor - call again with ' +
       'end_time=pagination.next_end_time to fetch older records. Note: this endpoint is frequently ' +
       'empty for many users, so an empty result does not necessarily indicate an error.',
     inputSchema: {

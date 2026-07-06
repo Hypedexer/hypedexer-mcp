@@ -144,7 +144,7 @@ export const tradersTools: ToolModule = [
     group: 'traders',
     title: 'Trader leaderboard',
     description:
-      'Top traders ranked by a chosen metric over a recent window. Requires `by` — the ranking key, which also ' +
+      'Top traders ranked by a chosen metric over a recent window. Requires `by` - the ranking key, which also ' +
       'shapes each row: "volume" (total_volume, fill_count, unique_coins), "pnl" (total_pnl, trade_count), ' +
       '"trades" (fill_count, total_volume), or "priority_fees" (total_priority_gas, fill_count). An unrecognized ' +
       '`by` is rejected with a 422. Set `hours` (1-168, default 1) for the window and `limit` (cap 100) for the size. ' +
@@ -210,7 +210,7 @@ export const tradersTools: ToolModule = [
     description:
       'Completed round-trip trades (entry-to-exit) across the market. view="list" (default) returns individual ' +
       'trades; view="summary" returns aggregate stats over the same filters as one object. Optionally filter by ' +
-      '`coin`, a time window, and (list only) `sort_by`. The list is offset-paginated — page with ' +
+      '`coin`, a time window, and (list only) `sort_by`. The list is offset-paginated - page with ' +
       'offset=pagination.next_offset. Notes: this endpoint has NO server-side limit cap, so `limit` is clamped to ' +
       '1000 (default 100) here to protect the response budget; an unrecognized `sort_by` is silently ignored ' +
       'upstream (falls back to the default sort); summary.avg_pnl_pct is in percent units and summary.avg_duration_s ' +

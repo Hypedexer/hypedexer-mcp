@@ -19,7 +19,7 @@ import { type ToolModule, defineTool } from './types.js'
  * HIP-4 outcome / prediction markets (HypeDexer Data API, Hip4 envelope).
  *
  * Every endpoint here is normalized with `getHip4`, whose `Page.meta.status` may
- * be `'not_yet_live'`. When it is, the underlying surface returns no rows today —
+ * be `'not_yet_live'`. When it is, the underlying surface returns no rows today -
  * we attach a human note (via `notYetLiveNote`) so an empty array is never
  * mistaken for "no data found". All list endpoints are offset-paginated
  * (page with `offset`/`limit`); only `/hip4/fee-scales` returns its full list in
@@ -43,10 +43,10 @@ export const hip4Tools: ToolModule = [
     group: 'hip4',
     title: 'HIP-4 outcome markets',
     description:
-      'List HIP-4 outcome (prediction) markets — one row per market with its identifying metadata. ' +
+      'List HIP-4 outcome (prediction) markets - one row per market with its identifying metadata. ' +
       'This is the same data served by /hip4/outcomes (an alias). Offset-paginated: page with ' +
       'offset=pagination.next_offset while pagination.has_more is true. Note: a coin= filter is ' +
-      'silently ignored upstream, so it is intentionally not exposed here — filter client-side instead.',
+      'silently ignored upstream, so it is intentionally not exposed here - filter client-side instead.',
     inputSchema: {
       limit: limitSchema(1000),
       offset: offsetSchema,
@@ -71,7 +71,7 @@ export const hip4Tools: ToolModule = [
     description:
       'List the questions backing HIP-4 outcome markets (the human-readable proposition each market resolves). ' +
       'Offset-paginated: page with offset=pagination.next_offset while pagination.has_more is true. ' +
-      'Quirk: each row\'s `description` field is pipe-delimited ("a|b|c") rather than free text — split on "|" to read the parts.',
+      'Quirk: each row\'s `description` field is pipe-delimited ("a|b|c") rather than free text - split on "|" to read the parts.',
     inputSchema: {
       limit: limitSchema(1000),
       offset: offsetSchema,
@@ -127,7 +127,7 @@ export const hip4Tools: ToolModule = [
     title: 'HIP-4 fills',
     description:
       'Executed trade fills on HIP-4 outcome markets. Optionally bound by a time window (start_time/end_time, ' +
-      'ISO-8601 or epoch-ms — sent to the server as bare ISO dates). Each row carries an epoch-ms `time_ms` and a ' +
+      'ISO-8601 or epoch-ms - sent to the server as bare ISO dates). Each row carries an epoch-ms `time_ms` and a ' +
       '`feeToken` of "USDH" or a "+NNN" token id. Offset-paginated: page with offset=pagination.next_offset while ' +
       'pagination.has_more is true.',
     inputSchema: {
@@ -162,7 +162,7 @@ export const hip4Tools: ToolModule = [
     title: 'HIP-4 fees',
     description:
       'Daily fee records for HIP-4 markets. Each row is keyed by a `date` in YYYY-MM-DD. Optionally bound by a ' +
-      'time window (start_time/end_time, ISO-8601 or epoch-ms — sent as bare ISO dates). Offset-paginated: page ' +
+      'time window (start_time/end_time, ISO-8601 or epoch-ms - sent as bare ISO dates). Offset-paginated: page ' +
       'with offset=pagination.next_offset while pagination.has_more is true.',
     inputSchema: {
       start_time: startTimeSchema,
@@ -196,7 +196,7 @@ export const hip4Tools: ToolModule = [
     title: 'HIP-4 settlements',
     description:
       'Settlement events for resolved HIP-4 outcome markets. Optionally bound by a time window (start_time/end_time, ' +
-      'ISO-8601 or epoch-ms — sent as bare ISO dates). Offset-paginated: page with offset=pagination.next_offset ' +
+      'ISO-8601 or epoch-ms - sent as bare ISO dates). Offset-paginated: page with offset=pagination.next_offset ' +
       'while pagination.has_more is true. Quirk: rows can be duplicated; de-duplicate on the (outcome_id, nonce) pair.',
     inputSchema: {
       start_time: startTimeSchema,
@@ -233,7 +233,7 @@ export const hip4Tools: ToolModule = [
       'Aggregated analytics rows for HIP-4 markets, each carrying a `bucket` timestamp. Optionally choose the bucket ' +
       'granularity with interval (1h/4h/1d; the server applies a default when omitted), and filter by coin (integer ' +
       'csv, e.g. "290,291") and/or outcome_id. Optionally bound by a time window (start_time/end_time, ISO-8601 or ' +
-      'epoch-ms — sent as bare ISO dates). Offset-paginated with a higher cap (up to 2000 per page): page with ' +
+      'epoch-ms - sent as bare ISO dates). Offset-paginated with a higher cap (up to 2000 per page): page with ' +
       'offset=pagination.next_offset while pagination.has_more is true.',
     inputSchema: {
       interval: z
@@ -290,7 +290,7 @@ export const hip4Tools: ToolModule = [
       'Access the two preview HIP-4 surfaces, selected by `view`: "fee_scales" -> GET /hip4/fee-scales (the full ' +
       'fee-scale list in one call, no paging) or "user_actions" -> GET /hip4/user-actions (offset-paginated, page ' +
       'with offset=pagination.next_offset). Both surfaces are NOT yet live on mainnet today and return an empty ' +
-      'list — an explanatory note is attached so the empty result is understood as expected, not an error.',
+      'list - an explanatory note is attached so the empty result is understood as expected, not an error.',
     inputSchema: {
       view: viewSchema(
         ['fee_scales', 'user_actions'],

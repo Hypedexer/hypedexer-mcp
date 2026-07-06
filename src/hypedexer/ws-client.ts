@@ -1,7 +1,7 @@
 import { WSAuthError, WebSocketError } from '../core/errors.js'
 
 /**
- * Indexed (multiplex) channels — the HypeDexer indexer feed on `wss://.../ws`.
+ * Indexed (multiplex) channels - the HypeDexer indexer feed on `wss://.../ws`.
  * From the live server's `welcome` frame (swagger only documents
  * `completed_trades`). Note the singular `liquidation`. `recent_activity` is a
  * multiplexed firehose that re-emits the others with an extra `stream` field.
@@ -15,7 +15,7 @@ export const WS_CHANNELS = [
 ] as const
 
 /**
- * Live (mirror) channels — Hyperliquid live feeds proxied on
+ * Live (mirror) channels - Hyperliquid live feeds proxied on
  * `wss://.../ws?mode=mirror`. Distinct subscription types and a different data
  * envelope (`{ channel, data: {...} }`) from the multiplex protocol.
  */
@@ -287,7 +287,7 @@ export function collectChannel(opts: CollectOptions): Promise<CollectResult> {
       }
 
       if (mode === 'mirror') {
-        // Mirror data frame: { channel, data: <object> } — one item per frame.
+        // Mirror data frame: { channel, data: <object> } - one item per frame.
         // Skip the subscription-ack channel, which shares this envelope.
         if (
           typeof f.channel === 'string' &&

@@ -30,7 +30,7 @@ export class HypedexerClient {
     })
   }
 
-  /** Raw GET — returns the unparsed-by-envelope JSON body. */
+  /** Raw GET - returns the unparsed-by-envelope JSON body. */
   get<T = unknown>(path: string, query?: Query, signal?: AbortSignal): Promise<T> {
     const req: HttpRequest = { method: 'GET', path }
     if (query !== undefined) req.query = query

@@ -25,7 +25,7 @@ import { type ToolModule, defineTool } from './types.js'
  *
  * Exception: the priority-fee gossip surfaces (`hd_hip3_gossip`) ship the
  * APIResponse envelope (`{ success, data, ... }`), so those two paths use the
- * API getters — using the bare getters would mis-normalize their wrapped body.
+ * API getters - using the bare getters would mis-normalize their wrapped body.
  *
  * `asset_id` is reported as 0 everywhere in HIP-3, so it is neither a useful
  * field nor a useful filter; the relevant identity is `dex_id` + `coin`/`ticker`.
@@ -93,7 +93,7 @@ export const hip3Tools: ToolModule = [
       'Assets listed on HIP-3 DEXes (ticker, symbol, max leverage, OI cap, halted flag, oracle ' +
       'source, fee share). Omit ticker to list all assets across DEXes (offset-paged via ' +
       'pagination.next_offset). Pass a prefixed ticker like "xyz:CL" (dex id + ":" + symbol) to ' +
-      'fetch one asset as a single object. Note: asset_id is always 0 upstream — identify assets by ticker, not id.',
+      'fetch one asset as a single object. Note: asset_id is always 0 upstream - identify assets by ticker, not id.',
     inputSchema: {
       ticker: z
         .string()
@@ -107,7 +107,7 @@ export const hip3Tools: ToolModule = [
     async handler(args, ctx) {
       const hd = requireHd(ctx)
       const assetIdNote =
-        'asset_id is always 0 in HIP-3 — identify assets by their prefixed ticker, not by id.'
+        'asset_id is always 0 in HIP-3 - identify assets by their prefixed ticker, not by id.'
       if (args.ticker !== undefined) {
         const { data } = await hd.getBareSingle<unknown>(
           `/hip3/assets/${encodeURIComponent(args.ticker)}`,
@@ -215,7 +215,7 @@ export const hip3Tools: ToolModule = [
       'Open/high/low/close candles for one HIP-3 coin. `coin` is required and must be the prefixed ' +
       'form (e.g. "xyz:CL"). Optionally bound with start_time/end_time (ISO-8601 or epoch-ms; sent as ' +
       'a bare date). Offset-paged via pagination.next_offset; default 168 rows, up to 2000. Quirk: ' +
-      'volume and fees are always 0 here — use the per-candle `trades` count as the activity proxy.',
+      'volume and fees are always 0 here - use the per-candle `trades` count as the activity proxy.',
     inputSchema: {
       coin: coinSchema.describe('Prefixed HIP-3 coin, e.g. "xyz:CL". Required.'),
       offset: offsetSchema,

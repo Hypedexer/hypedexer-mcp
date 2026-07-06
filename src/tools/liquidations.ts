@@ -33,9 +33,9 @@ export const liquidationsTools: ToolModule = [
     description:
       'Search Hyperliquid liquidation events (forced position closes). Optionally filter by coin, ' +
       'the liquidated trader address (user), and a time window. Results page with ' +
-      'pagination.next_cursor — call again with cursor=pagination.next_cursor while has_more is true. ' +
+      'pagination.next_cursor - call again with cursor=pagination.next_cursor while has_more is true. ' +
       'Set recent=true for the fast last-24h cached feed. Ordering is newest-first (order="desc"); ' +
-      'ascending order is unsupported because it corrupts the upstream cursor — reverse client-side if you need oldest-first.',
+      'ascending order is unsupported because it corrupts the upstream cursor - reverse client-side if you need oldest-first.',
     inputSchema: {
       recent: z
         .boolean()
