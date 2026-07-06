@@ -100,11 +100,17 @@ Generate a key at [app.hypedexer.com](https://www.app.hypedexer.com/) and set `H
 For a hosted deployment, run the streamable-HTTP transport:
 
 ```bash
-HYPEDEXER_API_KEY=… HYPEDEXER_MCP_TRANSPORT=http hypedexer-mcp
+HYPEDEXER_API_KEY=… HYPEDEXER_MCP_TRANSPORT=http HYPEDEXER_MCP_HTTP_TOKEN=… hypedexer-mcp
 # or: hypedexer-mcp --http
 # POST/GET/DELETE http://127.0.0.1:3000/mcp   (per-session, mcp-session-id header)
 # GET  http://127.0.0.1:3000/health
 ```
+
+The HTTP transport is hardened by default:
+
+- **Bearer auth.** When `HYPEDEXER_MCP_HTTP_TOKEN` is set, every `/mcp` request must send `Authorization: Bearer <token>` (constant-time comparison, 401 otherwise). Binding beyond loopback **without** a token refuses to start.
+- **DNS-rebinding defense.** The `Host` header must name an allowed host (loopback by default, extend with `HYPEDEXER_MCP_HTTP_ALLOWED_HOSTS`); a browser-sent `Origin` must match an allowed host or `HYPEDEXER_MCP_HTTP_ALLOWED_ORIGINS`. Mismatches get 403.
+- **Session lifecycle.** Sessions idle past `HYPEDEXER_MCP_HTTP_SESSION_TTL_MS` (default 10 min) are reaped; concurrent sessions are capped at `HYPEDEXER_MCP_HTTP_MAX_SESSIONS` (default 100, 503 past it); SIGTERM/SIGINT drain all sessions before exit.
 
 ## Configuration
 
@@ -114,6 +120,11 @@ HYPEDEXER_API_KEY=… HYPEDEXER_MCP_TRANSPORT=http hypedexer-mcp
 | `HYPEDEXER_MCP_TOOLS` | Tool groups: a preset (`public`/`core`/`all`) or a comma list. | `all` |
 | `HYPEDEXER_MCP_TRANSPORT` | `stdio` or `http`. | `stdio` |
 | `HYPEDEXER_MCP_HTTP_PORT` / `_HOST` | HTTP transport bind. | `3000` / `127.0.0.1` |
+| `HYPEDEXER_MCP_HTTP_TOKEN` | Bearer token required on `/mcp`. Mandatory for non-loopback binds. | _(none)_ |
+| `HYPEDEXER_MCP_HTTP_ALLOWED_HOSTS` | Extra `Host` header names accepted (comma list). Loopback always allowed. | _(none)_ |
+| `HYPEDEXER_MCP_HTTP_ALLOWED_ORIGINS` | Extra full `Origin` values accepted (comma list). | _(none)_ |
+| `HYPEDEXER_MCP_HTTP_SESSION_TTL_MS` | Idle session lifetime before reaping. | `600000` |
+| `HYPEDEXER_MCP_HTTP_MAX_SESSIONS` | Max concurrent HTTP sessions (503 past it). | `100` |
 | `HYPEDEXER_BASE_URL` | HypeDexer API base. | `https://api.hypedexer.com` |
 | `HYPERLIQUID_BASE_URL` | Hyperliquid public API base. | `https://api.hyperliquid.xyz` |
 | `HYPEDEXER_WS_URL` | WSS endpoint for the `streams`/`live` groups. Derived from `HYPEDEXER_BASE_URL` when unset. | _(derived)_ |

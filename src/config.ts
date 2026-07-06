@@ -68,6 +68,19 @@ export interface Config {
   transport: TransportKind
   httpPort: number
   httpHost: string
+  /**
+   * Bearer token required on every /mcp request when set. Mandatory when
+   * httpHost binds beyond loopback (startHttp refuses to start without it).
+   */
+  httpAuthToken: string | undefined
+  /** Hostnames accepted in the Host header (DNS-rebinding defense). */
+  httpAllowedHosts: string[]
+  /** Extra Origin values (full origins) accepted besides same-host origins. */
+  httpAllowedOrigins: string[]
+  /** Idle time after which an HTTP session is reaped. */
+  httpSessionTtlMs: number
+  /** Hard cap on concurrent HTTP sessions; new initializes get 503 beyond it. */
+  httpMaxSessions: number
   requestTimeoutMs: number
   /** Soft cap on tokens a single tool result may emit before truncate-with-steering. */
   maxResponseTokens: number
@@ -86,12 +99,23 @@ const DEFAULTS = {
   requestTimeoutMs: 30_000,
   maxResponseTokens: 25_000,
   logLevel: 'info' as LogLevel,
+  httpAllowedHosts: ['127.0.0.1', 'localhost', '[::1]', '::1'],
+  httpSessionTtlMs: 600_000,
+  httpMaxSessions: 100,
 }
 
 function num(value: string | undefined, fallback: number): number {
   if (value === undefined || value.trim() === '') return fallback
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
+}
+
+function csv(value: string | undefined): string[] {
+  if (value === undefined) return []
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
 }
 
 /**
@@ -147,6 +171,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     transport,
     httpPort: num(env.HYPEDEXER_MCP_HTTP_PORT, DEFAULTS.httpPort),
     httpHost: env.HYPEDEXER_MCP_HTTP_HOST?.trim() || DEFAULTS.httpHost,
+    httpAuthToken: env.HYPEDEXER_MCP_HTTP_TOKEN?.trim() || undefined,
+    httpAllowedHosts: (() => {
+      const extra = csv(env.HYPEDEXER_MCP_HTTP_ALLOWED_HOSTS)
+      return extra.length > 0 ? [...DEFAULTS.httpAllowedHosts, ...extra] : DEFAULTS.httpAllowedHosts
+    })(),
+    httpAllowedOrigins: csv(env.HYPEDEXER_MCP_HTTP_ALLOWED_ORIGINS),
+    httpSessionTtlMs: num(env.HYPEDEXER_MCP_HTTP_SESSION_TTL_MS, DEFAULTS.httpSessionTtlMs),
+    httpMaxSessions: num(env.HYPEDEXER_MCP_HTTP_MAX_SESSIONS, DEFAULTS.httpMaxSessions),
     requestTimeoutMs: num(env.HYPEDEXER_REQUEST_TIMEOUT_MS, DEFAULTS.requestTimeoutMs),
     maxResponseTokens: num(env.HYPEDEXER_MAX_RESPONSE_TOKENS, DEFAULTS.maxResponseTokens),
     logLevel,

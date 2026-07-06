@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- HTTP transport hardening (AUDIT.md H1, H2, H3):
+  - Bearer authentication on `/mcp` via `HYPEDEXER_MCP_HTTP_TOKEN` (constant-time comparison, 401 + `WWW-Authenticate` otherwise). Binding to a non-loopback host without a token now refuses to start; loopback without a token logs a warning.
+  - Host and Origin allowlisting on `/mcp` (DNS-rebinding defense): loopback hosts allowed by default, extendable with `HYPEDEXER_MCP_HTTP_ALLOWED_HOSTS` and `HYPEDEXER_MCP_HTTP_ALLOWED_ORIGINS`; mismatches get 403.
+  - Session lifecycle: idle sessions reaped after `HYPEDEXER_MCP_HTTP_SESSION_TTL_MS` (default 10 min), concurrent sessions capped at `HYPEDEXER_MCP_HTTP_MAX_SESSIONS` (default 100, 503 past it), SIGTERM/SIGINT drain all sessions and close the listener.
+  - `startHttp` now returns a handle (`server`, `port`, `sessionCount()`, `close()`); 8 new tests cover the auth, rebinding and lifecycle paths.
 - Upstream fixed the REST `/fills/spot/*` endpoints on 2026-07-06 (they returned 500 since design time). `hd_fills_search` with `scope=spot` already wired them and now returns real data, live-verified. Updated `hd_stream_fills_spot`'s description and the docs, which claimed the WebSocket channel was the only working spot-fill source.
 - Added `AGENTS.md` (contribution guide for AI coding agents) and raised the README to the hypedexer-sdk documentation standard.
 
