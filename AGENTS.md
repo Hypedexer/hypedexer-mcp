@@ -103,7 +103,7 @@ Check this table before "fixing" something that is actually an upstream limitati
 | Mirror WS `l4Book`: snapshot can exceed the native WS decompression limit | Steer to `l2Book` |
 | Mirror hub rate-limits rapid reconnects | Space live WS calls a few seconds apart, including in tests |
 | Mirror ack frame `subscriptionResponse` shares the data envelope | Filtered in the collector; keep the filter |
-| REST `/fills/spot/*` returned 500 (ClickHouse) at build time | `hd_stream_fills_spot` was shipped as the spot source. The SDK repo reports the REST route **fixed upstream 2026-07-06**; re-verify live before adding REST spot tools |
+| REST `/fills/spot/*` returned 500 (ClickHouse) at build time | **Fixed upstream 2026-07-06**, live-verified through `hd_fills_search scope=spot` (already wired, offset-paginated). Historical note only |
 
 ## Release process
 

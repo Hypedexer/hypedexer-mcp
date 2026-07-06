@@ -14,8 +14,9 @@ import { type ToolModule, defineTool } from './types.js'
  * subscription; call again for a fresh window. All five channels from the
  * server's `welcome` frame are covered:
  *   - completed_trades : closed round-trip trades (user-scopable).
- *   - fills_spot       : spot fills (the ONLY working spot data source — the
- *                        REST /spot/* endpoints are permanently 500).
+ *   - fills_spot       : spot fills, low-latency push. The REST /fills/spot/*
+ *                        endpoints (hd_fills_search scope=spot) work again
+ *                        upstream since 2026-07-06 and cover history.
  *   - recent_activity  : multiplexed firehose; each item carries a `stream` field.
  *   - liquidation      : liquidation events (note the singular channel name).
  *   - hip4_events      : HIP-4 prediction-market events.
@@ -134,8 +135,8 @@ export const streamsTools: ToolModule = [
     title: 'Stream spot fills (live WS)',
     description:
       'Open the HypeDexer WebSocket, subscribe to the `fills_spot` channel, and collect spot fills ' +
-      'pushed live for a bounded window. IMPORTANT: this WebSocket channel is the ONLY working source ' +
-      'of spot fill data — the REST /spot/* endpoints are permanently broken upstream (500). Items use ' +
+      'pushed live for a bounded window. Best for the freshest pushes; for historical or filtered ' +
+      'spot fills use hd_fills_search with scope="spot" (REST, offset-paginated). Items use ' +
       'spot coin handles (e.g. coin "@107" with a coin_meaning like "HYPE"). Returns a point-in-time ' +
       'batch; call again for a fresh window.',
     inputSchema: {

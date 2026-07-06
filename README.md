@@ -196,7 +196,7 @@ All tools are read-only. `hl_public_*` need no key; `hd_*` need `HYPEDEXER_API_K
 
 MCP tools are request/response; HypeDexer's WebSockets push continuously. The `hd_stream_*` and `hd_live_*` tools bridge the gap: each opens the socket, subscribes to one channel, collects pushed messages for a bounded window (`seconds`, 1-30, default 5, or until `max_items`), then closes and returns the batch: a **point-in-time snapshot, not a standing subscription**. Call again for a fresh window.
 
-- **`streams`**: the indexed *multiplex* endpoint (`wss://.../ws`): `completed_trades` (optional `user` scope), `fills_spot` (the only working spot-fill source, since REST `/spot/*` is broken upstream), `recent_activity`, `liquidation`, `hip4_events`.
+- **`streams`**: the indexed *multiplex* endpoint (`wss://.../ws`): `completed_trades` (optional `user` scope), `fills_spot` (lowest-latency spot fills; for history use `hd_fills_search` with `scope="spot"`), `recent_activity`, `liquidation`, `hip4_events`.
 - **`live`**: the Live *mirror* endpoint (`wss://.../ws?mode=mirror`): order books (`l2Book`/`l4Book`/`l4BookUpdates`), `bbo`, `trades` (per `coin`), the `allFills` firehose, `userFills` (per `user`), and `allMids`. Book channels return the current snapshot in the first frame.
 
   Per-channel status (live-verified 2026-07-01, the upstream mirror hub is still maturing):

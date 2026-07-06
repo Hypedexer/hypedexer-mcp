@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Upstream fixed the REST `/fills/spot/*` endpoints on 2026-07-06 (they returned 500 since design time). `hd_fills_search` with `scope=spot` already wired them and now returns real data, live-verified. Updated `hd_stream_fills_spot`'s description and the docs, which claimed the WebSocket channel was the only working spot-fill source.
+- Added `AGENTS.md` (contribution guide for AI coding agents) and raised the README to the hypedexer-sdk documentation standard.
+
 ## 1.0.0 (2026-07-02)
 
 First stable release. Packaging and robustness hardening on top of the 0.1.0 base, with every surface (REST, both WebSocket hubs, RPC) live-validated against the real API.
