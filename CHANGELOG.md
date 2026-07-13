@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (2026-07-13)
+
+First npm publish of the package. Contract-preserving MINOR: the full 77-tool surface is unchanged (0 tools removed, 0 required inputs removed), the new work is HTTP-transport hardening and upstream fixes.
 
 - HTTP transport hardening (AUDIT.md H1, H2, H3):
   - Bearer authentication on `/mcp` via `HYPEDEXER_MCP_HTTP_TOKEN` (constant-time comparison, 401 + `WWW-Authenticate` otherwise). Binding to a non-loopback host without a token now refuses to start; loopback without a token logs a warning.
