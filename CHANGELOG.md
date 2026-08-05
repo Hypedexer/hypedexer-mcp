@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.0 (2026-08-05)
 
 Migration to the MCP 2026-07-28 protocol revision and the v2 SDK packages (closes #1). BREAKING at the protocol and deployment level; the 77-tool surface is unchanged (0 tools removed, 0 required inputs removed).
 
