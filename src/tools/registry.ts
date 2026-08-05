@@ -1,4 +1,5 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { McpServer } from '@modelcontextprotocol/server'
+import { z } from 'zod'
 import type { Config, ToolGroup } from '../config.js'
 import type { Logger } from '../logger.js'
 import type { ToolContext } from './context.js'
@@ -51,7 +52,8 @@ function registerOne(server: McpServer, ctx: ToolContext, def: ToolDef): void {
     {
       title: def.title,
       description: def.description,
-      inputSchema: def.inputSchema,
+      // v2 deprecates raw shapes: wrap once here so tool modules keep their shape form.
+      inputSchema: z.object(def.inputSchema),
       annotations: { readOnlyHint: true, openWorldHint: true, ...(def.annotations ?? {}) },
     },
     // The SDK parses args against inputSchema before calling us.

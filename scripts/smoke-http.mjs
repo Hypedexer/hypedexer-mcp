@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 
 const server = spawn('node', ['dist/index.js', '--http'], {
   env: {

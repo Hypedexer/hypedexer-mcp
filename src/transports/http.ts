@@ -1,35 +1,30 @@
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import type { Server } from 'node:http'
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
+import { toNodeHandler } from '@modelcontextprotocol/node'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import type { Config } from '../config.js'
 import type { Logger } from '../logger.js'
-import { createServer } from '../server.js'
+import { buildServer, createContext } from '../server.js'
 
 /**
- * Streamable-HTTP transport with per-session isolation. Each MCP session gets
- * its own `McpServer` + transport, tracked by the `mcp-session-id` header. This
- * is the shape a hosted deployment (mcp.hypedexer.com) runs.
+ * Streamable-HTTP transport on the stateless 2026-07-28 protocol. One
+ * `createMcpHandler` serves everything: modern requests get a fresh server
+ * instance per request; 2025-era clients (initialize handshake, no envelope)
+ * are answered by the SDK's built-in stateless legacy fallback. There are no
+ * sessions to track, cap, or reap anymore. This is the shape a hosted
+ * deployment (mcp.hypedexer.com) runs.
  *
  * Security posture (AUDIT.md H1-H3):
  * - Bearer auth on /mcp when HYPEDEXER_MCP_HTTP_TOKEN is set; the token is
  *   MANDATORY when binding beyond loopback (startup refuses otherwise).
  * - Host and Origin allowlisting on /mcp (DNS-rebinding defense).
- * - Sessions carry a lastSeen stamp; an idle reaper closes them past the TTL,
- *   a hard cap 503s new sessions, and SIGTERM/SIGINT drain everything.
+ * - SIGTERM/SIGINT abort in-flight exchanges and close the listener.
  */
-
-interface SessionEntry {
-  transport: StreamableHTTPServerTransport
-  lastSeen: number
-}
 
 export interface HttpHandle {
   server: Server
   port: number
-  /** Number of live MCP sessions (for tests and diagnostics). */
-  sessionCount(): number
   close(): Promise<void>
 }
 
@@ -79,8 +74,6 @@ export async function startHttp(config: Config, logger: Logger): Promise<HttpHan
   const app = express()
   app.use(express.json({ limit: '4mb' }))
 
-  const sessions = new Map<string, SessionEntry>()
-
   // DNS-rebinding defense: the Host header must name an allowed host, and a
   // browser-sent Origin must be explicitly allowed or point at an allowed host.
   const guardOriginAndHost = (req: Request, res: Response, next: NextFunction): void => {
@@ -127,80 +120,26 @@ export async function startHttp(config: Config, logger: Logger): Promise<HttpHan
   }
 
   app.get('/health', (_req, res) => {
-    res.json({ ok: true, name: 'hypedexer-mcp', sessions: sessions.size })
+    res.json({ ok: true, name: 'hypedexer-mcp', protocol: 'stateless' })
+  })
+
+  // Clients and tool registration setup are per-process; only the McpServer
+  // instance is rebuilt per request (the v2 per-request-factory model).
+  const ctx = createContext(config, logger)
+  const handler = createMcpHandler(() => buildServer(ctx).server, {
+    legacy: 'stateless',
+    onerror: (err) => logger.error('mcp handler error', { error: err.message }),
+  })
+  const mcpRoute = toNodeHandler(handler, {
+    onerror: (err) => logger.error('mcp request adapter error', { error: err.message }),
   })
 
   app.use('/mcp', guardOriginAndHost, guardAuth)
-
-  app.post('/mcp', async (req: Request, res: Response) => {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined
-    const entry = sessionId ? sessions.get(sessionId) : undefined
-    let transport = entry?.transport
-
-    if (entry) entry.lastSeen = Date.now()
-
-    if (!transport) {
-      if (sessionId || !isInitializeRequest(req.body)) {
-        rpcError(res, 400, 'No valid session. Send an initialize request first.')
-        return
-      }
-      if (sessions.size >= config.httpMaxSessions) {
-        rpcError(res, 503, `Session limit reached (${config.httpMaxSessions}). Retry later.`)
-        return
-      }
-      // New session: fresh server + transport.
-      transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (sid) => {
-          sessions.set(sid, {
-            transport: transport as StreamableHTTPServerTransport,
-            lastSeen: Date.now(),
-          })
-          logger.info('mcp session opened', { sessionId: sid, sessions: sessions.size })
-        },
-      })
-      transport.onclose = () => {
-        const sid = transport?.sessionId
-        if (sid && sessions.delete(sid)) {
-          logger.info('mcp session closed', { sessionId: sid, sessions: sessions.size })
-        }
-      }
-      const built = createServer(config, logger)
-      // Cast: the SDK's concrete transport types `onclose` as `(() => void) | undefined`,
-      // which trips exactOptionalPropertyTypes against the Transport interface.
-      await built.server.connect(transport as unknown as Parameters<typeof built.server.connect>[0])
-    }
-
-    await transport.handleRequest(req, res, req.body)
-  })
-
-  // GET (server-sent stream) and DELETE (terminate) reuse the session transport.
-  const sessionRoute = async (req: Request, res: Response) => {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined
-    const entry = sessionId ? sessions.get(sessionId) : undefined
-    if (!entry) {
-      res.status(400).send('Invalid or missing mcp-session-id')
-      return
-    }
-    entry.lastSeen = Date.now()
-    await entry.transport.handleRequest(req, res)
-  }
-  app.get('/mcp', sessionRoute)
-  app.delete('/mcp', sessionRoute)
-
-  const reapIdleSessions = async (): Promise<void> => {
-    const cutoff = Date.now() - config.httpSessionTtlMs
-    for (const [sid, entry] of sessions) {
-      if (entry.lastSeen < cutoff) {
-        sessions.delete(sid)
-        logger.info('mcp session reaped (idle)', { sessionId: sid, sessions: sessions.size })
-        await entry.transport.close().catch(() => {})
-      }
-    }
-  }
-  const reapEveryMs = Math.min(60_000, Math.max(1_000, Math.floor(config.httpSessionTtlMs / 4)))
-  const reaper = setInterval(() => void reapIdleSessions(), reapEveryMs)
-  reaper.unref()
+  // express.json() already drained the stream, so the parsed body must be
+  // forwarded explicitly; GET/DELETE have no body and pass none.
+  app.post('/mcp', (req: Request, res: Response) => void mcpRoute(req, res, req.body))
+  app.get('/mcp', (req: Request, res: Response) => void mcpRoute(req, res))
+  app.delete('/mcp', (req: Request, res: Response) => void mcpRoute(req, res))
 
   const server = await new Promise<Server>((resolve) => {
     const s = app.listen(config.httpPort, config.httpHost, () => {
@@ -216,16 +155,12 @@ export async function startHttp(config: Config, logger: Logger): Promise<HttpHan
   const close = async (): Promise<void> => {
     if (closing) return
     closing = true
-    clearInterval(reaper)
-    for (const [sid, entry] of sessions) {
-      sessions.delete(sid)
-      await entry.transport.close().catch(() => {})
-    }
+    await handler.close().catch(() => {})
     await new Promise<void>((resolve) => server.close(() => resolve()))
   }
 
   const drain = (signal: string): void => {
-    logger.info(`received ${signal}, draining http sessions`)
+    logger.info(`received ${signal}, closing http transport`)
     void close().then(() => process.exit(0))
   }
   process.once('SIGTERM', () => drain('SIGTERM'))
@@ -234,5 +169,5 @@ export async function startHttp(config: Config, logger: Logger): Promise<HttpHan
   const address = server.address()
   const port = typeof address === 'object' && address !== null ? address.port : config.httpPort
 
-  return { server, port, sessionCount: () => sessions.size, close }
+  return { server, port, close }
 }

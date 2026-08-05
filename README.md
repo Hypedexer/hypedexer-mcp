@@ -33,10 +33,10 @@ This server collapses all of that behind **one tool contract**: uniform paginati
 | **Coverage**   | 83 tools: ~88 REST endpoints + 13 WS channels (2 hubs) + HyperEVM JSON-RPC       |
 | **Keyless**    | 8 `hl_public_*` tools hit the free Hyperliquid API: boots with no key            |
 | **Groups**     | 17 env-gated groups, 3 presets (`public` / `core` / `all`)                       |
-| **Transports** | stdio (default) + streamable HTTP (per-session)                                  |
+| **Transports** | stdio (default) + streamable HTTP (stateless, MCP 2026-07-28)                    |
 | **Safety**     | Read-only by construction; state-mutating RPC methods are refused                |
 | **Runtime**    | Node >= 22, native `WebSocket`, no `ws` dependency                               |
-| **Tests**      | 71 unit tests (mocked fetch + in-memory MCP client) + gated live suite           |
+| **Tests**      | 79 unit tests (mocked fetch + in-memory MCP client) + gated live suite           |
 
 > **AI coding agents:** contributing to this repo? Read [`AGENTS.md`](./AGENTS.md) first: verification loop, the tool-module pattern, hard-won MCP lessons, and the upstream quirks you must not "fix". Consuming the server through an MCP client? The contract is in [How results are shaped](#how-results-are-shaped-for-agents) and in each tool's description.
 
@@ -102,7 +102,7 @@ For a hosted deployment, run the streamable-HTTP transport:
 ```bash
 HYPEDEXER_API_KEY=… HYPEDEXER_MCP_TRANSPORT=http HYPEDEXER_MCP_HTTP_TOKEN=… hypedexer-mcp
 # or: hypedexer-mcp --http
-# POST/GET/DELETE http://127.0.0.1:3000/mcp   (per-session, mcp-session-id header)
+# POST/GET/DELETE http://127.0.0.1:3000/mcp   (stateless, one server instance per request)
 # GET  http://127.0.0.1:3000/health
 ```
 
@@ -110,7 +110,7 @@ The HTTP transport is hardened by default:
 
 - **Bearer auth.** When `HYPEDEXER_MCP_HTTP_TOKEN` is set, every `/mcp` request must send `Authorization: Bearer <token>` (constant-time comparison, 401 otherwise). Binding beyond loopback **without** a token refuses to start.
 - **DNS-rebinding defense.** The `Host` header must name an allowed host (loopback by default, extend with `HYPEDEXER_MCP_HTTP_ALLOWED_HOSTS`); a browser-sent `Origin` must match an allowed host or `HYPEDEXER_MCP_HTTP_ALLOWED_ORIGINS`. Mismatches get 403.
-- **Session lifecycle.** Sessions idle past `HYPEDEXER_MCP_HTTP_SESSION_TTL_MS` (default 10 min) are reaped; concurrent sessions are capped at `HYPEDEXER_MCP_HTTP_MAX_SESSIONS` (default 100, 503 past it); SIGTERM/SIGINT drain all sessions before exit.
+- **Stateless serving.** The server speaks the stateless MCP 2026-07-28 protocol: no sessions, no `Mcp-Session-Id` header, one fresh server instance per request, so replicas scale horizontally with no shared state. 2025-era clients (the `initialize` handshake) are still answered through the SDK's stateless legacy fallback. SIGTERM/SIGINT abort in-flight exchanges before exit.
 
 ## Configuration
 
@@ -123,8 +123,6 @@ The HTTP transport is hardened by default:
 | `HYPEDEXER_MCP_HTTP_TOKEN` | Bearer token required on `/mcp`. Mandatory for non-loopback binds. | _(none)_ |
 | `HYPEDEXER_MCP_HTTP_ALLOWED_HOSTS` | Extra `Host` header names accepted (comma list). Loopback always allowed. | _(none)_ |
 | `HYPEDEXER_MCP_HTTP_ALLOWED_ORIGINS` | Extra full `Origin` values accepted (comma list). | _(none)_ |
-| `HYPEDEXER_MCP_HTTP_SESSION_TTL_MS` | Idle session lifetime before reaping. | `600000` |
-| `HYPEDEXER_MCP_HTTP_MAX_SESSIONS` | Max concurrent HTTP sessions (503 past it). | `100` |
 | `HYPEDEXER_BASE_URL` | HypeDexer API base. | `https://api.hypedexer.com` |
 | `HYPERLIQUID_BASE_URL` | Hyperliquid public API base. | `https://api.hyperliquid.xyz` |
 | `HYPEDEXER_WS_URL` | WSS endpoint for the `streams`/`live` groups. Derived from `HYPEDEXER_BASE_URL` when unset. | _(derived)_ |

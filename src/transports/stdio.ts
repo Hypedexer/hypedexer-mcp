@@ -1,4 +1,4 @@
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio'
 import type { BuiltServer } from '../server.js'
 
 /** Connect a built server to stdio (Claude Desktop, Cursor, and most MCP clients). */

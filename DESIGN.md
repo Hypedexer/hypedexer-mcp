@@ -1,5 +1,7 @@
 # HypeDexer MCP Server — Design
 
+> 2026-08-05: transports migrated to MCP spec 2026-07-28 / SDK v2 (stateless HTTP via `createMcpHandler`, no sessions; SDK packages `@modelcontextprotocol/server`/`node`/`client`, zod 4). Transport details below describe the original 1.x design; `src/transports/http.ts` is authoritative.
+>
 > Source: research+design workflow (wf_50bf6e52). Catalog grounded against ~/hypedexer-sdk/ENDPOINTS.md (100 entry points). MCP SDK specifics verified against installed @modelcontextprotocol/sdk@1.29.0.
 
 ## Summary

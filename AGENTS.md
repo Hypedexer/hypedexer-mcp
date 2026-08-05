@@ -35,7 +35,7 @@ Run **all four** before proposing any change. `prepublishOnly` runs the same seq
 ```bash
 pnpm lint           # biome check src test
 pnpm typecheck      # tsc --noEmit, strict + exactOptionalPropertyTypes + noUncheckedIndexedAccess
-pnpm test           # vitest, 71 tests (3 live tests skip without HYPEDEXER_MCP_LIVE=1)
+pnpm test           # vitest, 79 tests (3 live tests skip without HYPEDEXER_MCP_LIVE=1)
 pnpm build          # tsup -> dist/index.js
 ```
 

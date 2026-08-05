@@ -1,4 +1,5 @@
 import { type IncomingHttpHeaders, request } from 'node:http'
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadConfig } from '../src/config.js'
 import { createLogger } from '../src/logger.js'
@@ -61,6 +62,7 @@ function raw(
   })
 }
 
+/** 2025-era handshake: served by the SDK's stateless legacy fallback. */
 const initializeBody = {
   jsonrpc: '2.0',
   id: 1,
@@ -102,7 +104,6 @@ describe('http transport security', () => {
       headers: { authorization: 'Bearer s3cret' },
     })
     expect(goodAuth.status).toBe(200)
-    expect(goodAuth.headers['mcp-session-id']).toBeTruthy()
   })
 
   it('leaves /health reachable without a token', async () => {
@@ -148,28 +149,30 @@ describe('http transport security', () => {
     })
     expect(res.status).toBe(200)
   })
+})
 
-  it('caps concurrent sessions and 503s past the limit', async () => {
-    handle = await startHttp(testConfig({ HYPEDEXER_MCP_HTTP_MAX_SESSIONS: '1' }), logger)
-
-    const first = await raw(handle.port, { body: initializeBody })
-    expect(first.status).toBe(200)
-    expect(handle.sessionCount()).toBe(1)
-
-    const second = await raw(handle.port, { body: initializeBody })
-    expect(second.status).toBe(503)
-    expect(handle.sessionCount()).toBe(1)
-  })
-
-  it('reaps idle sessions past the TTL', async () => {
-    handle = await startHttp(testConfig({ HYPEDEXER_MCP_HTTP_SESSION_TTL_MS: '200' }), logger)
-
+describe('http transport protocol (stateless)', () => {
+  it('answers a 2025-era initialize without minting a session', async () => {
+    handle = await startHttp(testConfig(), logger)
     const res = await raw(handle.port, { body: initializeBody })
     expect(res.status).toBe(200)
-    expect(handle.sessionCount()).toBe(1)
+    expect(res.headers['mcp-session-id']).toBeUndefined()
+    expect(res.text).toContain('"serverInfo"')
+  })
 
-    // Reaper interval is clamped to >= 1s; wait for one sweep past the TTL.
-    await new Promise((r) => setTimeout(r, 1400))
-    expect(handle.sessionCount()).toBe(0)
-  }, 5000)
+  it('serves a modern v2 client end to end', async () => {
+    handle = await startHttp(testConfig(), logger)
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`http://127.0.0.1:${handle.port}/mcp`),
+    )
+    const client = new Client({ name: 'test-modern', version: '0.0.0' })
+    await client.connect(transport)
+    try {
+      const { tools } = await client.listTools()
+      expect(tools.length).toBeGreaterThan(0)
+      expect(tools.map((t) => t.name)).toContain('hl_public_all_mids')
+    } finally {
+      await client.close()
+    }
+  })
 })

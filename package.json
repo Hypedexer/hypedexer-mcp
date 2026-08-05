@@ -43,12 +43,14 @@
     "prepublishOnly": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
     "express": "^5.1.0",
-    "zod": "^3.25.76"
+    "zod": "^4.2.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@modelcontextprotocol/client": "^2.0.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
     "tsup": "^8.3.5",

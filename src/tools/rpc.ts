@@ -203,7 +203,7 @@ export const rpcTools: ToolModule = [
           'What to subscribe to: newHeads (block headers), logs (events), or newPendingTransactions.',
         ),
       filter: z
-        .record(z.unknown())
+        .record(z.string(), z.unknown())
         .optional()
         .describe(
           'Filter object for the "logs" subscription (e.g. {"address":"0x...","topics":[...]}). Ignored otherwise.',

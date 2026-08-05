@@ -41,7 +41,7 @@ export const infoTools: ToolModule = [
         .min(1)
         .describe('The /info request discriminator, e.g. "fills", "liqHistory", "hip3Summary".'),
       params: z
-        .record(z.unknown())
+        .record(z.string(), z.unknown())
         .optional()
         .describe(
           'Optional passthrough object of extra request fields merged into the body alongside `type` ' +

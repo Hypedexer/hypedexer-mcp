@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { McpServer } from '@modelcontextprotocol/server'
 import type { Config } from './config.js'
 import { HypedexerClient } from './hypedexer/client.js'
 import { HyperliquidPublicClient } from './hyperliquid/public-client.js'
@@ -6,9 +6,10 @@ import { type Logger, createLogger } from './logger.js'
 import type { ToolContext } from './tools/context.js'
 import { allModules } from './tools/index.js'
 import { type RegisterResult, registerAll } from './tools/registry.js'
+import { VERSION } from './version.js'
 
 export const SERVER_NAME = 'hypedexer-mcp'
-export const SERVER_VERSION = '0.1.0'
+export const SERVER_VERSION = VERSION
 
 export interface BuiltServer {
   server: McpServer
@@ -18,14 +19,13 @@ export interface BuiltServer {
 }
 
 /**
- * Build a fully-wired MCP server: construct the clients, assemble the tool
- * context, and register every enabled tool. Transport-agnostic - the caller
- * connects the returned `server` to stdio or HTTP.
+ * Assemble the shared tool context: API clients, config, logger. Built once
+ * per process; the HTTP transport reuses it across per-request server builds.
  */
-export function createServer(
+export function createContext(
   config: Config,
   logger: Logger = createLogger(config.logLevel),
-): BuiltServer {
+): ToolContext {
   const hl = new HyperliquidPublicClient({
     baseUrl: config.hyperliquidBaseUrl,
     timeoutMs: config.requestTimeoutMs,
@@ -45,8 +45,16 @@ export function createServer(
     logger.warn('no HYPEDEXER_API_KEY set - only the keyless `public` tool group is enabled')
   }
 
-  const ctx: ToolContext = { hd, hl, config, logger }
+  return { hd, hl, config, logger }
+}
 
+/**
+ * Build a fresh MCP server over an existing context and register every enabled
+ * tool. The v2 HTTP entry serves one server instance per request, so this must
+ * stay cheap: clients live in the context, only registration happens here.
+ */
+export function buildServer(ctx: ToolContext): BuiltServer {
+  const { config, logger } = ctx
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
@@ -61,4 +69,15 @@ export function createServer(
 
   const registration = registerAll(server, ctx, allModules, config, logger)
   return { server, ctx, registration, logger }
+}
+
+/**
+ * Convenience for single-server transports (stdio): build the context and one
+ * fully-wired server in one call.
+ */
+export function createServer(
+  config: Config,
+  logger: Logger = createLogger(config.logLevel),
+): BuiltServer {
+  return buildServer(createContext(config, logger))
 }

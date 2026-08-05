@@ -1,4 +1,5 @@
 import type { LogLevel } from './logger.js'
+import { VERSION } from './version.js'
 
 /** All tool groups. `public` is keyless; everything else needs HYPEDEXER_API_KEY. */
 export const TOOL_GROUPS = [
@@ -77,10 +78,6 @@ export interface Config {
   httpAllowedHosts: string[]
   /** Extra Origin values (full origins) accepted besides same-host origins. */
   httpAllowedOrigins: string[]
-  /** Idle time after which an HTTP session is reaped. */
-  httpSessionTtlMs: number
-  /** Hard cap on concurrent HTTP sessions; new initializes get 503 beyond it. */
-  httpMaxSessions: number
   requestTimeoutMs: number
   /** Soft cap on tokens a single tool result may emit before truncate-with-steering. */
   maxResponseTokens: number
@@ -100,8 +97,6 @@ const DEFAULTS = {
   maxResponseTokens: 25_000,
   logLevel: 'info' as LogLevel,
   httpAllowedHosts: ['127.0.0.1', 'localhost', '[::1]', '::1'],
-  httpSessionTtlMs: 600_000,
-  httpMaxSessions: 100,
 }
 
 function num(value: string | undefined, fallback: number): number {
@@ -177,11 +172,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       return extra.length > 0 ? [...DEFAULTS.httpAllowedHosts, ...extra] : DEFAULTS.httpAllowedHosts
     })(),
     httpAllowedOrigins: csv(env.HYPEDEXER_MCP_HTTP_ALLOWED_ORIGINS),
-    httpSessionTtlMs: num(env.HYPEDEXER_MCP_HTTP_SESSION_TTL_MS, DEFAULTS.httpSessionTtlMs),
-    httpMaxSessions: num(env.HYPEDEXER_MCP_HTTP_MAX_SESSIONS, DEFAULTS.httpMaxSessions),
     requestTimeoutMs: num(env.HYPEDEXER_REQUEST_TIMEOUT_MS, DEFAULTS.requestTimeoutMs),
     maxResponseTokens: num(env.HYPEDEXER_MAX_RESPONSE_TOKENS, DEFAULTS.maxResponseTokens),
     logLevel,
-    userAgent: 'hypedexer-mcp/1.0.0',
+    userAgent: `hypedexer-mcp/${VERSION}`,
   }
 }

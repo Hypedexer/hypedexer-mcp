@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+Migration to the MCP 2026-07-28 protocol revision and the v2 SDK packages (closes #1). BREAKING at the protocol and deployment level; the 77-tool surface is unchanged (0 tools removed, 0 required inputs removed).
+
+- MCP SDK v2: `@modelcontextprotocol/sdk` 1.x replaced by `@modelcontextprotocol/server` + `@modelcontextprotocol/node` (runtime) and `@modelcontextprotocol/client` (tests and smoke scripts only).
+- Stateless HTTP transport: `/mcp` is now served by `createMcpHandler` with one fresh server instance per request (the v2 per-request-factory model, adapted to Express via `toNodeHandler`). No sessions, no `Mcp-Session-Id` header; replicas scale horizontally with no shared state. 2025-era clients (`initialize` handshake) are answered by the SDK's built-in stateless legacy fallback, verified over both stdio and HTTP.
+- BREAKING (config): `HYPEDEXER_MCP_HTTP_SESSION_TTL_MS` and `HYPEDEXER_MCP_HTTP_MAX_SESSIONS` are removed along with the session map, idle reaper and 503 cap; `startHttp`'s handle drops `sessionCount()`. Bearer auth and Host/Origin allowlisting are unchanged.
+- zod bumped from 3.x to 4.x (the v2 SDK floor is `zod >= 4.2.0`): tool input shapes are now wrapped with `z.object()` at registration and the two open `z.record(...)` params take the v4 two-argument form.
+- `serverInfo.version` and the outbound `User-Agent` now read the real package version at build time (they were hardcoded to `0.1.0` and `1.0.0`).
+- `scripts/smoke-keyed.mjs` reads the API key from this repo's `.env` instead of an unrelated project's env file.
+
 ## 1.1.0 (2026-07-13)
 
 First npm publish of the package. Contract-preserving MINOR: the full 77-tool surface is unchanged (0 tools removed, 0 required inputs removed), the new work is HTTP-transport hardening and upstream fixes.

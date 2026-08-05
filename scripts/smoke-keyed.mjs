@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { Client } from '@modelcontextprotocol/client'
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 
-// Read the key straight from LiquidTerminal_Back/.env so it never hits argv/logs.
-const env = readFileSync('/home/yaugourt/LiquidTerminal_Back/.env', 'utf8')
-const key = env.match(/^HL_INDEXER_API_KEY=(.+)$/m)?.[1]?.trim()
-if (!key) throw new Error('HL_INDEXER_API_KEY not found')
+// Read the key straight from this repo's .env so it never hits argv/logs.
+const env = readFileSync(new URL('../.env', import.meta.url), 'utf8')
+const key = env.match(/^HYPEDEXER_API_KEY=(.+)$/m)?.[1]?.trim()
+if (!key) throw new Error('HYPEDEXER_API_KEY not found in .env')
 console.log('key loaded:', key.slice(0, 6) + '…(masked, len ' + key.length + ')')
 
 const transport = new StdioClientTransport({
