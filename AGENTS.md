@@ -35,7 +35,7 @@ Run **all four** before proposing any change. `prepublishOnly` runs the same seq
 ```bash
 pnpm lint           # biome check src test
 pnpm typecheck      # tsc --noEmit, strict + exactOptionalPropertyTypes + noUncheckedIndexedAccess
-pnpm test           # vitest, 79 tests (3 live tests skip without HYPEDEXER_MCP_LIVE=1)
+pnpm test           # vitest, 84 tests (3 live tests skip without HYPEDEXER_MCP_LIVE=1)
 pnpm build          # tsup -> dist/index.js
 ```
 
@@ -79,7 +79,7 @@ Adding or removing a tool touches **all** of these; missing one is the classic r
 
 1. The module file itself, and `src/tools/index.ts` (barrel) if the group is new.
 2. `src/config.ts` if the group is new (and decide preset membership; `OPT_IN_ONLY` holds `info` and `rpc`).
-3. **Tool counters** in `test/tools.client.test.ts` (83 total with `all,info,rpc`; 8 keyless) and `test/config.test.ts`.
+3. **Tool counters** in `test/tools.client.test.ts` (85 total with `all,info,rpc`; 8 keyless) and `test/config.test.ts`.
 4. `scripts/smoke-desktop.mjs` expectations.
 5. README tool catalog, `DESIGN.md` counters, `CHANGELOG.md`.
 

@@ -6,7 +6,7 @@
 
 ## Summary
 
-A single, buildable design for a production-grade HypeDexer MCP server in TypeScript (ESM, Node >=20, official @modelcontextprotocol/sdk + Zod). It vendors the already-proven SDK core (HttpClient + error taxonomy + 4-kind pagination + time/sentinel handling + 3 envelope families) into src/core/, adds a key-free Hyperliquid public-info client, and exposes 83 consolidated, agent-shaped read-only tools across 17 env-gated domain groups (including `streams` + `live` groups that snapshot the two WebSocket hubs, and an `rpc` group for the HyperEVM JSON-RPC product). It runs with no key (the 8 hl_public_* tools hit api.hyperliquid.xyz directly) and unlocks the paid HypeDexer surface when HYPEDEXER_API_KEY is set. Both stdio (Claude Desktop/Cursor) and streamable HTTP (hosted mcp.hypedexer.com) transports ship. Every documented server quirk (asc-cursor corruption, 1970 sentinels, total_count=page-size, not_yet_live, key-shift drops, ClickHouse 500 on /spot, IPv4 winner mislabel) is normalized in one quirks layer so agents never see raw noise. Tools return structuredContent + a concise text summary, uniform pagination handles (next_cursor/next_offset/next_end_time + a steering hint), recovery-guiding errors, and a 25k-token budget with truncate-with-steering.
+A single, buildable design for a production-grade HypeDexer MCP server in TypeScript (ESM, Node >=20, official @modelcontextprotocol/sdk + Zod). It vendors the already-proven SDK core (HttpClient + error taxonomy + 4-kind pagination + time/sentinel handling + 3 envelope families) into src/core/, adds a key-free Hyperliquid public-info client, and exposes 85 consolidated, agent-shaped read-only tools across 17 env-gated domain groups (including `streams` + `live` groups that snapshot the two WebSocket hubs, and an `rpc` group for the HyperEVM JSON-RPC product). It runs with no key (the 8 hl_public_* tools hit api.hyperliquid.xyz directly) and unlocks the paid HypeDexer surface when HYPEDEXER_API_KEY is set. Both stdio (Claude Desktop/Cursor) and streamable HTTP (hosted mcp.hypedexer.com) transports ship. Every documented server quirk (asc-cursor corruption, 1970 sentinels, total_count=page-size, not_yet_live, key-shift drops, ClickHouse 500 on /spot, IPv4 winner mislabel) is normalized in one quirks layer so agents never see raw noise. Tools return structuredContent + a concise text summary, uniform pagination handles (next_cursor/next_offset/next_end_time + a steering hint), recovery-guiding errors, and a 25k-token budget with truncate-with-steering.
 
 ## Architecture
 
@@ -14,7 +14,7 @@ Request flow: an MCP tool call -> Zod input parse (strict, recovery-steering err
 
 Layering is strict and one-directional: core/ (transport, errors, time, pagination, envelope types) knows nothing about MCP; hypedexer/ and hyperliquid/ are thin typed callers over core; tools/ is the only layer that imports the MCP SDK and Zod; transports/ only wires a built McpServer to a channel. This keeps the network/normalization code unit-testable against the saved sample JSON without touching the MCP machinery.
 
-Tool philosophy follows Anthropic's writing-tools-for-agents guidance: we do NOT mirror all 94 REST endpoints. We consolidate the REST surface to 64 workflow tools using three moves: (1) fold list+detail into one tool with an id/ticker param that switches to single-record mode; (2) fold sibling endpoints behind a `view` enum (e.g. hip3 auctions live|current|history, evm stats current|daily); (3) fold recent/all and perp/spot scopes into one search tool with a scope flag. The /spot REST endpoints, broken upstream (500) at design time, shipped anyway folded into hd_fills_search as scope=spot; upstream fixed them on 2026-07-06 and they now return data (live-verified). hd_stream_fills_spot remains the low-latency push source. On top of the 64 Data-API REST tools, three groups extend coverage to the rest of the HypeDexer surface: `streams` (5 tools, the indexed multiplex WS channels), `live` (8 tools, the Live mirror WS channels — order books, mids, fills), and `rpc` (6 tools, the HyperEVM JSON-RPC product over HTTP + an eth_subscribe snapshot). 83 tools total.
+Tool philosophy follows Anthropic's writing-tools-for-agents guidance: we do NOT mirror all 94 REST endpoints. We consolidate the REST surface to 64 workflow tools using three moves: (1) fold list+detail into one tool with an id/ticker param that switches to single-record mode; (2) fold sibling endpoints behind a `view` enum (e.g. hip3 auctions live|current|history, evm stats current|daily); (3) fold recent/all and perp/spot scopes into one search tool with a scope flag. The /spot REST endpoints, broken upstream (500) at design time, shipped anyway folded into hd_fills_search as scope=spot; upstream fixed them on 2026-07-06 and they now return data (live-verified). hd_stream_fills_spot remains the low-latency push source. On top of the 64 Data-API REST tools, three groups extend coverage to the rest of the HypeDexer surface: `streams` (5 tools, the indexed multiplex WS channels), `live` (8 tools, the Live mirror WS channels: order books, mids, fills), and `rpc` (6 tools, the HyperEVM JSON-RPC product over HTTP + an eth_subscribe snapshot), and the permissionless HIP-4 attribution surface (`hd_hip4_providers`, `hd_hip4_deployers`, shipped 2026-08-29 the day the upgrade landed). 85 tools total.
 
 Tool groups are registered through a registry keyed by group name and filtered by the HYPEDEXER_MCP_TOOLS gate before McpServer.registerTool is ever called, so ungated groups cost zero definition tokens. The free `public` group is always registered (works keyless); key-gated groups self-skip with a one-line log if HYPEDEXER_API_KEY is absent, so a no-key install still boots and smoke-tests end-to-end.
 
@@ -175,7 +175,7 @@ Published as @hypedexer/mcp with bin { "hypedexer-mcp": "dist/index.js" } (tsup 
 
 ---
 
-## Tool catalog (83 tools)
+## Tool catalog (85 tools)
 
 ### `hl_public_all_mids`  (public, read-only)
 
@@ -672,8 +672,38 @@ HIP-4 prediction markets/outcomes (the two endpoints are aliases). Filter by und
   - `outcome_id` — number
   - `limit` — number: <=1000
   - `offset` — number
-- **Output:** markets + handle; pipe-delimited description parsed into fields
-- **Quirks to normalize:** Hip4 envelope; coin filter omitted
+- **Output:** markets + handle; pipe-delimited description parsed into fields; per-market attribution (`venue`, `deployer`, `deployer_fee_scale`)
+- **Quirks to normalize:** Hip4 envelope; coin filter omitted; oracle-run rows carry an empty venue/deployer
+
+### `hd_hip4_providers`  (hip4, read-only)
+
+Per-provider HIP-4 trading stats: one row per venue with volume_usdc, fills, unique_users, markets_traded, fees, last_trade. Permissionless venues appear as soon as they trade; oracle-run markets are aggregated under the provider "oracle", so totals span the whole history.
+
+- **Backing:** GET /hip4/providers
+- **Pagination:** offset (1000)
+- **Tier:** standard
+- **Inputs:**
+  - `venue` - string: venue name or "oracle"
+  - `start_time` - string: ISO or epoch-ms, sent as full ISO
+  - `end_time` - string
+  - `limit` - number: <=1000
+  - `offset` - number
+- **Output:** provider stats + handle
+- **Quirks to normalize:** Hip4 envelope; a time window recomputes the aggregates over that window only
+
+### `hd_hip4_deployers`  (hip4, read-only)
+
+The permissionless deployer registry: deployer address, venue, fee_scale and the delegation list (who may register questions/outcomes or settle per venue).
+
+- **Backing:** GET /hip4/deployers
+- **Pagination:** offset (1000)
+- **Tier:** standard
+- **Inputs:**
+  - `venue` - string
+  - `limit` - number: <=1000
+  - `offset` - number
+- **Output:** registry rows + decoded `delegations` + handle
+- **Quirks to normalize:** `sub_deployers` arrives as a JSON string, decoded into `delegations` (raw string preserved)
 
 ### `hd_hip4_questions`  (hip4, read-only)
 
@@ -711,13 +741,14 @@ HIP-4 fills; time params ISO (incl trailing Z), time_ms is epoch. feeToken is 'U
 - **Pagination:** offset (1000)
 - **Tier:** standard
 - **Inputs:**
-  - `outcome_id` — number
-  - `user_address` — string
-  - `start` — string: ISO
-  - `end` — string
-  - `limit` — number: <=1000
-  - `offset` — number
-- **Output:** fills + handle
+  - `outcome_id` - number
+  - `user` - string: trader address
+  - `coin` - string: e.g. #12100
+  - `start` - string: ISO
+  - `end` - string
+  - `limit` - number: <=1000
+  - `offset` - number
+- **Output:** fills + handle; each row attributed with `market_name`, `market_description`, `venue`, `deployer`
 
 ### `hd_hip4_fees`  (hip4, read-only)
 

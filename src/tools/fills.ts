@@ -27,6 +27,8 @@ import { type ToolModule, defineTool } from './types.js'
  *   spot,  address               -> GET /fills/spot/user/{address}
  *
  * Perp endpoints are cursor-paginated; spot endpoints are offset-paginated.
+ * The three perp endpoints also accept `include_order_type`, which resolves each
+ * fill's originating order and adds an `orderType` field; the spot ones do not.
  */
 export const fillsTools: ToolModule = [
   defineTool({
@@ -37,7 +39,8 @@ export const fillsTools: ToolModule = [
       'Search executed trade fills on Hyperliquid. Pick scope="perp" (default) or "spot". ' +
       'Optionally filter by a trader address and/or coin, and a time window. Perp results page ' +
       'with pagination.next_cursor; spot results page with pagination.next_offset. For the fast ' +
-      'last-24h perp feed, set recent=true (perp, no address).',
+      'last-24h perp feed, set recent=true (perp, no address). Set include_order_type=true (perp ' +
+      'only) to resolve how each fill was ordered.',
     inputSchema: {
       scope: z.enum(['perp', 'spot']).default('perp').describe('perp fills or spot fills.'),
       address: addressSchema
@@ -48,6 +51,14 @@ export const fillsTools: ToolModule = [
         .boolean()
         .default(false)
         .describe('Perp only, no address: use the cached last-24h feed (faster).'),
+      include_order_type: z
+        .boolean()
+        .default(false)
+        .describe(
+          'Perp scope only: add an `orderType` to each fill ("Limit", "Market", "Stop Market", ' +
+            '"Take Profit Limit", ...), resolved from the order the fill came from. Null for fills ' +
+            'older than order-status coverage (before 2026-06-27). Costs roughly +300 ms per page.',
+        ),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
       limit: limitSchema(1000),
@@ -69,6 +80,7 @@ export const fillsTools: ToolModule = [
       let path: string
       if (args.scope === 'perp') {
         if (args.cursor !== undefined) query.cursor = args.cursor
+        if (args.include_order_type) query.include_order_type = true
         path = args.address
           ? `/fills/user/${args.address}`
           : args.recent
@@ -90,8 +102,15 @@ export const fillsTools: ToolModule = [
       const totalCount = sanitizeTotalCount(page.meta.totalCount, page.data.length)
       if (totalCount != null) meta.total_count = totalCount
 
+      const notes: string[] = []
+      if (args.include_order_type && args.scope === 'spot') {
+        notes.push(
+          'include_order_type is a perp-only option upstream; spot fills carry no `orderType` and the flag was not sent.',
+        )
+      }
+
       return buildResult(
-        { data: page.data, pagination, meta },
+        { data: page.data, pagination, meta, notes },
         {
           summary: `${args.scope} fills${args.address ? ` for ${args.address}` : ''}.`,
           maxTokens: ctx.config.maxResponseTokens,

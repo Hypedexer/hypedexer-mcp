@@ -1,8 +1,8 @@
 # @hypedexer/mcp-server
 
-> [Model Context Protocol](https://modelcontextprotocol.io) server for the [HypeDexer](https://hypedexer.com) Hyperliquid indexer: 83 read-only tools over the full API surface (REST, both WebSocket hubs, HyperEVM JSON-RPC), plus keyless Hyperliquid public tools so it works with no API key at all.
+> [Model Context Protocol](https://modelcontextprotocol.io) server for the [HypeDexer](https://hypedexer.com) Hyperliquid indexer: 85 read-only tools over the full API surface (REST, both WebSocket hubs, HyperEVM JSON-RPC), plus keyless Hyperliquid public tools so it works with no API key at all.
 
-[![tools](https://img.shields.io/badge/tools-83%20read--only-8A2BE2?labelColor=333)](#tool-catalog)
+[![tools](https://img.shields.io/badge/tools-85%20read--only-8A2BE2?labelColor=333)](#tool-catalog)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.29-blue?labelColor=333)](https://github.com/modelcontextprotocol/typescript-sdk)
 [![node >= 22](https://img.shields.io/badge/node-%3E%3D22-3c873a?labelColor=333)](https://nodejs.org)
 [![tests](https://img.shields.io/badge/tests-71%20passing-brightgreen?labelColor=333)](#development)
@@ -30,7 +30,7 @@ This server collapses all of that behind **one tool contract**: uniform paginati
 
 |                |                                                                                  |
 | -------------- | -------------------------------------------------------------------------------- |
-| **Coverage**   | 83 tools: ~88 REST endpoints + 13 WS channels (2 hubs) + HyperEVM JSON-RPC       |
+| **Coverage**   | 85 tools: ~88 REST endpoints + 13 WS channels (2 hubs) + HyperEVM JSON-RPC       |
 | **Keyless**    | 8 `hl_public_*` tools hit the free Hyperliquid API: boots with no key            |
 | **Groups**     | 17 env-gated groups, 3 presets (`public` / `core` / `all`)                       |
 | **Transports** | stdio (default) + streamable HTTP (stateless, MCP 2026-07-28)                    |
@@ -192,7 +192,7 @@ All tools are read-only. `hl_public_*` need no key; `hd_*` need `HYPEDEXER_API_K
 | `funding` | `hd_funding_predicted`, `hd_funding_history`, `hd_user_funding` |
 | `vaults` | `hd_vaults_list`, `hd_vault_details`, `hd_vault_snapshots`, `hd_user_vault_equities` |
 | `hip3` | `hd_hip3_overview`, `hd_hip3_dexs`, `hd_hip3_assets`, `hd_hip3_auctions`, `hd_hip3_snapshots`, `hd_hip3_ohlcv`, `hd_hip3_oracle_stats`, `hd_hip3_fills`, `hd_hip3_traders`, `hd_hip3_user`, `hd_hip3_gossip` |
-| `hip4` | `hd_hip4_markets`, `hd_hip4_questions`, `hd_hip4_outcome_tokens`, `hd_hip4_fills`, `hd_hip4_fees`, `hd_hip4_settlements`, `hd_hip4_analytics`, `hd_hip4_preview` |
+| `hip4` | `hd_hip4_markets`, `hd_hip4_providers`, `hd_hip4_deployers`, `hd_hip4_questions`, `hd_hip4_outcome_tokens`, `hd_hip4_fills`, `hd_hip4_fees`, `hd_hip4_settlements`, `hd_hip4_analytics`, `hd_hip4_preview` |
 | `builders` | `hd_builders`, `hd_builder_stats`, `hd_builder_users` |
 | `twaps` | `hd_twaps_search`, `hd_twaps_stats`, `hd_twap_detail` |
 | `evm` | `hd_evm_stats`, `hd_evm_blocks`, `hd_evm_transactions`, `hd_evm_logs`, `hd_evm_transfers`, `hd_evm_bridge_events`, `hd_evm_user`, `hd_evm_hip3_backstop` |
@@ -250,6 +250,8 @@ Condensed reference; the full catalog with rationale lives in [`DESIGN.md`](./DE
 | `total_count` sometimes = page size | Dropped rather than passed through wrong |
 | HIP-4 `not_yet_live` responses | Surfaced in `meta` with the upstream message, not faked as empty |
 | Gossip leaderboard `address` is an IPv4 | Renamed to a node-IP field |
+| HIP-4 `sub_deployers` delegations shipped as a JSON string | Decoded into a `delegations` array, raw string kept |
+| HIP-4 oracle-run rows report an empty `venue` / `deployer` | Flagged in a note; the same operator is `"oracle"` on questions and providers |
 | Unbounded upstream response sizes | 25k-token budget, tail-truncation with steering notes |
 | Mirror WS ack frame mimics the data envelope | Filtered out of snapshots |
 | Dead / degraded channels (`rpc` host, `bbo`, `trades`, `l4Book`) | Gated or flagged in tool descriptions with an alternative |

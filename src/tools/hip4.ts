@@ -1,10 +1,11 @@
 import type { Page } from '../core/types.js'
 import type { Query } from '../hypedexer/client.js'
-import { notYetLiveNote, sanitizeTotalCount } from '../hypedexer/quirks.js'
+import { notYetLiveNote, sanitizeTotalCount, withParsedDelegations } from '../hypedexer/quirks.js'
 import { requireHd } from './context.js'
 import { buildResult } from './shared/output.js'
 import { buildTimeQuery, offsetPagination } from './shared/pagination.js'
 import {
+  addressSchema,
   coinSchema,
   endTimeSchema,
   limitSchema,
@@ -24,7 +25,20 @@ import { type ToolModule, defineTool } from './types.js'
  * mistaken for "no data found". All list endpoints are offset-paginated
  * (page with `offset`/`limit`); only `/hip4/fee-scales` returns its full list in
  * a single call.
+ *
+ * Since the permissionless HIP-4 upgrade (2026-08-29) markets, fills and
+ * questions carry their venue attribution (`venue`, `deployer`), `/hip4/providers`
+ * aggregates trading per venue and `/hip4/deployers` is the deployer registry.
+ * Quirk: oracle-operated (legacy) rows report `venue` and `deployer` as empty
+ * strings on markets and fills, while `/hip4/questions` and `/hip4/providers`
+ * name that same operator "oracle".
  */
+
+/** Attribution quirk shared by the endpoints that carry `venue` / `deployer`. */
+const ORACLE_VENUE_NOTE =
+  'Attribution: rows deployed permissionlessly carry `venue` + `deployer`; rows operated by the ' +
+  'Hyperliquid oracle report both as an empty string here (the same operator is named "oracle" by ' +
+  'hd_hip4_questions and hd_hip4_providers).'
 
 /** Common HIP-4 meta + not_yet_live note derivation for a Hip4 page. */
 function hip4Meta(page: Page<unknown>): { meta: Record<string, unknown>; notes: string[] } {
@@ -43,10 +57,13 @@ export const hip4Tools: ToolModule = [
     group: 'hip4',
     title: 'HIP-4 outcome markets',
     description:
-      'List HIP-4 outcome (prediction) markets - one row per market with its identifying metadata. ' +
-      'This is the same data served by /hip4/outcomes (an alias). Offset-paginated: page with ' +
-      'offset=pagination.next_offset while pagination.has_more is true. Note: a coin= filter is ' +
-      'silently ignored upstream, so it is intentionally not exposed here - filter client-side instead.',
+      'List HIP-4 outcome (prediction) markets - one row per market with its identifying metadata plus its ' +
+      'venue attribution (`venue`, `deployer`, `deployer_fee_scale`); empty strings mean the market is ' +
+      'operated by the Hyperliquid oracle. Use hd_hip4_providers for per-venue trading stats and ' +
+      'hd_hip4_deployers for the registry behind a `deployer`. This is the same data served by ' +
+      '/hip4/outcomes (an alias). Offset-paginated: page with offset=pagination.next_offset while ' +
+      'pagination.has_more is true. Note: a coin= filter is silently ignored upstream, so it is ' +
+      'intentionally not exposed here - filter client-side instead.',
     inputSchema: {
       limit: limitSchema(1000),
       offset: offsetSchema,
@@ -57,9 +74,92 @@ export const hip4Tools: ToolModule = [
       const page = await hd.getHip4('/hip4/markets', query)
       const pagination = offsetPagination(page, args.offset, args.limit)
       const { meta, notes } = hip4Meta(page)
+      notes.push(ORACLE_VENUE_NOTE)
       return buildResult(
         { data: page.data, pagination, meta, notes },
         { summary: 'HIP-4 outcome markets.', maxTokens: ctx.config.maxResponseTokens },
+      )
+    },
+  }),
+
+  defineTool({
+    name: 'hd_hip4_providers',
+    group: 'hip4',
+    title: 'HIP-4 providers (per-venue trading stats)',
+    description:
+      'Trading stats per HIP-4 provider: one row per venue with volume_usdc, fills, unique_users, markets_traded, ' +
+      'fees and last_trade. Permissionless venues appear on their own as soon as they trade, and the markets run by ' +
+      'the Hyperliquid oracle are reported under the provider "oracle", so the totals cover the full history. ' +
+      'Filter to one venue with venue=, and/or bound the aggregation with start_time/end_time (a window changes the ' +
+      'numbers: they are computed over the fills in it). Offset-paginated: page with offset=pagination.next_offset ' +
+      'while pagination.has_more is true.',
+    inputSchema: {
+      venue: z
+        .string()
+        .trim()
+        .min(1)
+        .optional()
+        .describe('Filter to one provider by venue name (e.g. "out"), or "oracle". Omit for all.'),
+      start_time: startTimeSchema,
+      end_time: endTimeSchema,
+      limit: limitSchema(1000),
+      offset: offsetSchema,
+    },
+    async handler(args, ctx) {
+      const hd = requireHd(ctx)
+      let query: Query = { limit: args.limit, offset: args.offset }
+      if (args.venue !== undefined) query.venue = args.venue
+      query = buildTimeQuery(query, {
+        start: args.start_time,
+        end: args.end_time,
+        target: 'isoSnake',
+        startKey: 'start',
+        endKey: 'end',
+      })
+      const page = await hd.getHip4('/hip4/providers', query)
+      const pagination = offsetPagination(page, args.offset, args.limit)
+      const { meta, notes } = hip4Meta(page)
+      return buildResult(
+        { data: page.data, pagination, meta, notes },
+        { summary: 'HIP-4 provider stats.', maxTokens: ctx.config.maxResponseTokens },
+      )
+    },
+  }),
+
+  defineTool({
+    name: 'hd_hip4_deployers',
+    group: 'hip4',
+    title: 'HIP-4 deployer registry',
+    description:
+      'The permissionless HIP-4 deployer registry: one row per deployer with its address, `venue`, `fee_scale` and ' +
+      'delegation list. Upstream ships the delegations as a JSON string in `sub_deployers`; each row is enriched here ' +
+      'with a decoded `delegations` array of {action, addresses} naming who may register questions/outcomes or settle ' +
+      'on that venue. Filter with venue=. Offset-paginated: page with offset=pagination.next_offset while ' +
+      'pagination.has_more is true. Only permissionless deployers are listed - oracle-operated markets have none.',
+    inputSchema: {
+      venue: z
+        .string()
+        .trim()
+        .min(1)
+        .optional()
+        .describe('Filter to one venue by name (e.g. "out"). Omit for the whole registry.'),
+      limit: limitSchema(1000),
+      offset: offsetSchema,
+    },
+    async handler(args, ctx) {
+      const hd = requireHd(ctx)
+      const query: Query = { limit: args.limit, offset: args.offset }
+      if (args.venue !== undefined) query.venue = args.venue
+      const page = await hd.getHip4<Record<string, unknown>>('/hip4/deployers', query)
+      const rows = page.data.map((row) => withParsedDelegations(row))
+      const pagination = offsetPagination(page, args.offset, args.limit)
+      const { meta, notes } = hip4Meta(page)
+      notes.push(
+        '`delegations` is decoded from the raw `sub_deployers` JSON string, which is left in place unchanged.',
+      )
+      return buildResult(
+        { data: rows, pagination, meta, notes },
+        { summary: 'HIP-4 deployer registry.', maxTokens: ctx.config.maxResponseTokens },
       )
     },
   }),
@@ -70,7 +170,9 @@ export const hip4Tools: ToolModule = [
     title: 'HIP-4 market questions',
     description:
       'List the questions backing HIP-4 outcome markets (the human-readable proposition each market resolves). ' +
-      'Offset-paginated: page with offset=pagination.next_offset while pagination.has_more is true. ' +
+      'Each row carries the venue attribution derived from its outcomes: `venue` (a permissionless venue name, or ' +
+      '"oracle" for the legacy oracle-operated questions) and `deployer`. Offset-paginated: page with ' +
+      'offset=pagination.next_offset while pagination.has_more is true. ' +
       'Quirk: each row\'s `description` field is pipe-delimited ("a|b|c") rather than free text - split on "|" to read the parts.',
     inputSchema: {
       limit: limitSchema(1000),
@@ -84,6 +186,7 @@ export const hip4Tools: ToolModule = [
       const { meta, notes } = hip4Meta(page)
       notes.push(
         'Each row\'s `description` is pipe-delimited ("a|b|c"); split on "|" to read the parts.',
+        'Questions on the legacy oracle venue report venue="oracle" with an empty `deployer`.',
       )
       return buildResult(
         { data: page.data, pagination, meta, notes },
@@ -126,11 +229,28 @@ export const hip4Tools: ToolModule = [
     group: 'hip4',
     title: 'HIP-4 fills',
     description:
-      'Executed trade fills on HIP-4 outcome markets. Optionally bound by a time window (start_time/end_time, ' +
-      'ISO-8601 or epoch-ms - sent to the server as bare ISO dates). Each row carries an epoch-ms `time_ms` and a ' +
-      '`feeToken` of "USDH" or a "+NNN" token id. Offset-paginated: page with offset=pagination.next_offset while ' +
-      'pagination.has_more is true.',
+      'Executed trade fills on HIP-4 outcome markets, fully attributed: each row carries the trader (`user`), the ' +
+      'market (`coin`, `outcome_id`, `market_name`, `market_description`) and the venue that deployed it (`venue`, ' +
+      '`deployer`; empty strings mean the oracle-operated legacy venue). Filter by user, coin and/or outcome_id, and ' +
+      'optionally bound by a time window (start_time/end_time, ISO-8601 or epoch-ms - sent to the server as bare ISO ' +
+      'dates). Each row carries an epoch-ms `time_ms` and a `feeToken` of "USDH" or a "+NNN" token id. ' +
+      'Offset-paginated: page with offset=pagination.next_offset while pagination.has_more is true.',
     inputSchema: {
+      user: addressSchema
+        .optional()
+        .describe('Filter to one trader. Omit for the market-wide feed.'),
+      coin: z
+        .string()
+        .trim()
+        .min(1)
+        .optional()
+        .describe('Filter to one outcome market by its coin handle, e.g. "#12100".'),
+      outcome_id: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe('Filter to one outcome by its numeric id, e.g. 12100.'),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
       limit: limitSchema(1000),
@@ -139,6 +259,9 @@ export const hip4Tools: ToolModule = [
     async handler(args, ctx) {
       const hd = requireHd(ctx)
       let query: Query = { limit: args.limit, offset: args.offset }
+      if (args.user !== undefined) query.user = args.user
+      if (args.coin !== undefined) query.coin = args.coin
+      if (args.outcome_id !== undefined) query.outcome_id = args.outcome_id
       query = buildTimeQuery(query, {
         start: args.start_time,
         end: args.end_time,
@@ -149,6 +272,7 @@ export const hip4Tools: ToolModule = [
       const page = await hd.getHip4('/hip4/fills', query)
       const pagination = offsetPagination(page, args.offset, args.limit)
       const { meta, notes } = hip4Meta(page)
+      notes.push(ORACLE_VENUE_NOTE)
       return buildResult(
         { data: page.data, pagination, meta, notes },
         { summary: 'HIP-4 fills.', maxTokens: ctx.config.maxResponseTokens },

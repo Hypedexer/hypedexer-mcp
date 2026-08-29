@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+Same-day support for the permissionless HIP-4 upgrade (Hyperliquid, 2026-08-29) and for order types on fills. Additive: 2 new tools, 0 tools removed, 0 required inputs added.
+
+- New `hd_hip4_providers` (GET /hip4/providers): per-provider trading stats (volume_usdc, fills, unique_users, markets_traded, fees, last_trade), one row per venue. Filter with `venue` and/or a `start_time`/`end_time` window (sent as full ISO, so hour-level windows work). Markets run by the Hyperliquid oracle are reported under the provider "oracle", so totals cover the whole history and new permissionless venues appear on their own as soon as they trade.
+- New `hd_hip4_deployers` (GET /hip4/deployers): the permissionless deployer registry (deployer address, venue, fee_scale, delegation list), filterable by `venue`. Upstream ships the delegations as a JSON-encoded string in `sub_deployers`; each row is enriched with a decoded `delegations` array of `{ action, addresses }` and the raw string is left untouched.
+- `hd_hip4_fills` gained the `user`, `coin` and `outcome_id` filters, so a HIP-4 trade can be attributed end to end (who traded, which market, which venue deployed it). Rows now carry `venue` and `deployer` alongside `market_name` / `market_description`.
+- `hd_hip4_markets` and `hd_hip4_questions` document the new attribution fields (`venue`, `deployer`, `deployer_fee_scale`). Quirk noted in the results: oracle-run rows report an empty `venue` / `deployer` on markets and fills, while questions and providers name that same operator "oracle".
+- `hd_fills_search` gained `include_order_type` (perp scope only, off by default): adds an `orderType` to each fill ("Limit", "Market", "Stop Market", "Take Profit Limit", ...) resolved from the originating order, null for fills predating order-status coverage (before 2026-06-27), roughly +300 ms per page. Requested on spot scope, the flag is not sent and the result carries a note.
+- Surface is now 85 tools with `all,info,rpc` (77 `hd_*` + 8 keyless `hl_public_*`). All five paths live-verified against the real API; `scripts/smoke-keyed.mjs` covers them.
+
 ## 2.0.0 (2026-08-05)
 
 Migration to the MCP 2026-07-28 protocol revision and the v2 SDK packages (closes #1). BREAKING at the protocol and deployment level; the 77-tool surface is unchanged (0 tools removed, 0 required inputs removed).
