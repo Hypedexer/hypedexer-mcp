@@ -1,11 +1,13 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import type { Server } from 'node:http'
 import { toNodeHandler } from '@modelcontextprotocol/node'
 import { createMcpHandler } from '@modelcontextprotocol/server'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import type { Config } from '../config.js'
 import type { Logger } from '../logger.js'
-import { buildServer, createContext } from '../server.js'
+import { buildServer, createContext, createRequestContext } from '../server.js'
+import type { ToolContext } from '../tools/context.js'
 
 /**
  * Streamable-HTTP transport on the stateless 2026-07-28 protocol. One
@@ -29,6 +31,13 @@ export interface HttpHandle {
 }
 
 const LOOPBACK_BINDS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
+
+/**
+ * Shape of a plausible HypeDexer API key in a bearer header (apikey auth
+ * mode). Deliberately loose: the edge is the authority on validity; this only
+ * rejects garbage early with a clean 401 instead of an upstream error.
+ */
+const API_KEY_SHAPE = /^[A-Za-z0-9._-]{8,200}$/
 
 function sha256(value: string): Buffer {
   return createHash('sha256').update(value).digest()
@@ -56,14 +65,20 @@ function rpcError(res: Response, status: number, message: string): void {
 
 export async function startHttp(config: Config, logger: Logger): Promise<HttpHandle> {
   const isLoopbackBind = LOOPBACK_BINDS.has(config.httpHost.toLowerCase())
-  if (!isLoopbackBind && !config.httpAuthToken) {
+  const apikeyMode = config.authMode === 'apikey'
+  if (!isLoopbackBind && !config.httpAuthToken && !apikeyMode) {
     throw new Error(
-      `Refusing to bind the HTTP transport to ${config.httpHost} without authentication. Set HYPEDEXER_MCP_HTTP_TOKEN (clients must send "Authorization: Bearer <token>"), or keep the default loopback bind.`,
+      `Refusing to bind the HTTP transport to ${config.httpHost} without authentication. Set HYPEDEXER_MCP_HTTP_TOKEN (clients must send "Authorization: Bearer <token>"), set HYPEDEXER_MCP_AUTH_MODE=apikey (each bearer is the caller's API key), or keep the default loopback bind.`,
     )
   }
-  if (isLoopbackBind && !config.httpAuthToken) {
+  if (isLoopbackBind && !config.httpAuthToken && !apikeyMode) {
     logger.warn(
       'http transport is unauthenticated (loopback only). Set HYPEDEXER_MCP_HTTP_TOKEN to require a bearer token.',
+    )
+  }
+  if (apikeyMode && !config.upstreamSecret) {
+    logger.warn(
+      'apikey auth mode without HYPEDEXER_MCP_UPSTREAM_SECRET: MCP-only keys and per-tool-call metering are disabled upstream; Data API keys meter as direct REST usage.',
     )
   }
 
@@ -104,6 +119,30 @@ export async function startHttp(config: Config, logger: Logger): Promise<HttpHan
     next()
   }
 
+  // apikey mode: the bearer is the caller's HypeDexer API key, stashed for the
+  // per-request context. No constant-time compare: the value is an opaque
+  // pass-through and the edge is the validator. A missing bearer is allowed
+  // and serves the keyless public tools; a malformed one gets a clean 401.
+  const guardApiKey = (req: Request, res: Response, next: NextFunction): void => {
+    const header = req.headers.authorization
+    const provided = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined
+    if (provided === undefined) {
+      next()
+      return
+    }
+    if (!API_KEY_SHAPE.test(provided)) {
+      res.setHeader('WWW-Authenticate', 'Bearer')
+      rpcError(
+        res,
+        401,
+        'Unauthorized: the bearer must be a HypeDexer API key (get one at https://www.app.hypedexer.com/), or be omitted for keyless public tools.',
+      )
+      return
+    }
+    res.locals.apiKey = provided
+    next()
+  }
+
   const guardAuth = (req: Request, res: Response, next: NextFunction): void => {
     if (!config.httpAuthToken) {
       next()
@@ -124,9 +163,13 @@ export async function startHttp(config: Config, logger: Logger): Promise<HttpHan
   })
 
   // Clients and tool registration setup are per-process; only the McpServer
-  // instance is rebuilt per request (the v2 per-request-factory model).
+  // instance is rebuilt per request (the v2 per-request-factory model). In
+  // apikey mode a per-request context (caller's key, metering headers, gated
+  // groups) rides an AsyncLocalStorage into the factory, keeping the SDK
+  // handler signature untouched.
   const ctx = createContext(config, logger)
-  const handler = createMcpHandler(() => buildServer(ctx).server, {
+  const als = new AsyncLocalStorage<ToolContext>()
+  const handler = createMcpHandler(() => buildServer(als.getStore() ?? ctx).server, {
     legacy: 'stateless',
     onerror: (err) => logger.error('mcp handler error', { error: err.message }),
   })
@@ -134,12 +177,29 @@ export async function startHttp(config: Config, logger: Logger): Promise<HttpHan
     onerror: (err) => logger.error('mcp request adapter error', { error: err.message }),
   })
 
-  app.use('/mcp', guardOriginAndHost, guardAuth)
+  app.use('/mcp', guardOriginAndHost, apikeyMode ? guardApiKey : guardAuth)
+  // One X-MCP-Call id per HTTP exchange: in the stateless protocol one POST is
+  // one JSON-RPC message, so a tools/call meters as exactly one tool call
+  // upstream however many REST requests the handler fans out into.
+  const runWithRequestCtx = (res: Response, fn: () => void): void => {
+    if (!apikeyMode) {
+      fn()
+      return
+    }
+    const apiKey = typeof res.locals.apiKey === 'string' ? res.locals.apiKey : undefined
+    als.run(createRequestContext(ctx, apiKey, randomUUID()), fn)
+  }
   // express.json() already drained the stream, so the parsed body must be
   // forwarded explicitly; GET/DELETE have no body and pass none.
-  app.post('/mcp', (req: Request, res: Response) => void mcpRoute(req, res, req.body))
-  app.get('/mcp', (req: Request, res: Response) => void mcpRoute(req, res))
-  app.delete('/mcp', (req: Request, res: Response) => void mcpRoute(req, res))
+  app.post('/mcp', (req: Request, res: Response) =>
+    runWithRequestCtx(res, () => void mcpRoute(req, res, req.body)),
+  )
+  app.get('/mcp', (req: Request, res: Response) =>
+    runWithRequestCtx(res, () => void mcpRoute(req, res)),
+  )
+  app.delete('/mcp', (req: Request, res: Response) =>
+    runWithRequestCtx(res, () => void mcpRoute(req, res)),
+  )
 
   const server = await new Promise<Server>((resolve) => {
     const s = app.listen(config.httpPort, config.httpHost, () => {

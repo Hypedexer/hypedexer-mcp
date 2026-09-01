@@ -176,3 +176,86 @@ describe('http transport protocol (stateless)', () => {
     }
   })
 })
+
+describe('http transport apikey mode (hosted multi-tenant)', () => {
+  const apikeyEnv = {
+    HYPEDEXER_MCP_AUTH_MODE: 'apikey',
+    HYPEDEXER_MCP_TOOLS: 'public,markets',
+    HYPEDEXER_BASE_URL: 'https://api.test.local',
+    HYPEDEXER_MCP_UPSTREAM_SECRET: 'edge-shared-secret',
+  }
+
+  it('rejects a malformed bearer with 401', async () => {
+    handle = await startHttp(testConfig(apikeyEnv), logger)
+    const res = await raw(handle.port, {
+      headers: { authorization: 'Bearer not a key' },
+      body: initializeBody,
+    })
+    expect(res.status).toBe(401)
+    expect(res.text).toContain('HypeDexer API key')
+  })
+
+  it('serves keyless requests with only public tools', async () => {
+    handle = await startHttp(testConfig(apikeyEnv), logger)
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`http://127.0.0.1:${handle.port}/mcp`),
+    )
+    const client = new Client({ name: 'test-keyless', version: '0.0.0' })
+    await client.connect(transport)
+    try {
+      const { tools } = await client.listTools()
+      expect(tools.length).toBeGreaterThan(0)
+      for (const t of tools) expect(t.name).toMatch(/^hl_public_/)
+    } finally {
+      await client.close()
+    }
+  })
+
+  it('registers keyed tools for a bearer key and forwards it with metering headers', async () => {
+    handle = await startHttp(testConfig(apikeyEnv), logger)
+    const captured: Array<{ url: string; headers: Record<string, string> }> = []
+    const realFetch = globalThis.fetch
+    // Selective stub: intercept upstream HypeDexer calls, pass the MCP
+    // client's own loopback traffic through to the real fetch.
+    globalThis.fetch = (async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url.startsWith('https://api.test.local')) {
+        captured.push({ url, headers: { ...((init?.headers ?? {}) as Record<string, string>) } })
+        return new Response(JSON.stringify({ success: true, data: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      return realFetch(input, init)
+    }) as typeof fetch
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`http://127.0.0.1:${handle.port}/mcp`),
+      { requestInit: { headers: { authorization: 'Bearer hd_test_1234567890' } } },
+    )
+    const client = new Client({ name: 'test-keyed', version: '0.0.0' })
+    try {
+      await client.connect(transport)
+      const { tools } = await client.listTools()
+      expect(tools.map((t) => t.name)).toContain('hd_market_snapshot_24h')
+
+      await client.callTool({ name: 'hd_market_snapshot_24h', arguments: {} })
+      expect(captured.length).toBe(5)
+      const callIds = new Set<string>()
+      for (const req of captured) {
+        expect(req.headers['X-API-Key']).toBe('hd_test_1234567890')
+        expect(req.headers['X-MCP-Server']).toBe('edge-shared-secret')
+        expect(req.headers['X-MCP-Call']).toMatch(/^[0-9a-f-]{36}$/)
+        callIds.add(req.headers['X-MCP-Call'] as string)
+      }
+      // One tool call fans out into five REST requests but meters exactly once.
+      expect(callIds.size).toBe(1)
+    } finally {
+      globalThis.fetch = realFetch
+      await client.close()
+    }
+  })
+})

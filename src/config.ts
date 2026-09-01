@@ -52,6 +52,17 @@ export const PRESETS: Record<string, ToolGroup[]> = {
 
 export type TransportKind = 'stdio' | 'http'
 
+/**
+ * HTTP transport authentication mode.
+ * - 'token': a single shared bearer (HYPEDEXER_MCP_HTTP_TOKEN) guards /mcp and
+ *   every request runs with the process-wide HYPEDEXER_API_KEY.
+ * - 'apikey': each request's bearer IS the caller's own HypeDexer API key; a
+ *   per-request context forwards it upstream. This is the hosted multi-tenant
+ *   mode (mcp.hypedexer.com): plans and credits are enforced by the edge, per
+ *   key, exactly as for direct REST calls.
+ */
+export type AuthMode = 'token' | 'apikey'
+
 export interface Config {
   /** HypeDexer API key. When absent, only the keyless `public` group is usable. */
   apiKey: string | undefined
@@ -75,6 +86,15 @@ export interface Config {
    * httpHost binds beyond loopback (startHttp refuses to start without it).
    */
   httpAuthToken: string | undefined
+  /** HTTP transport authentication mode: shared token or per-request API key. */
+  authMode: AuthMode
+  /**
+   * Shared secret sent upstream as X-MCP-Server on every keyed request so the
+   * edge can recognize traffic from the hosted MCP server (required for
+   * MCP-only keys and per-tool-call metering). Optional: without it, regular
+   * Data API keys still work and simply meter as direct REST usage.
+   */
+  upstreamSecret: string | undefined
   /** Hostnames accepted in the Host header (DNS-rebinding defense). */
   httpAllowedHosts: string[]
   /** Extra Origin values (full origins) accepted besides same-host origins. */
@@ -148,6 +168,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const toolsSpec = env.HYPEDEXER_MCP_TOOLS?.trim() || DEFAULTS.toolsSpec
   const transportEnv = env.HYPEDEXER_MCP_TRANSPORT?.trim().toLowerCase()
   const transport: TransportKind = transportEnv === 'http' ? 'http' : DEFAULTS.transport
+  const authModeEnv = env.HYPEDEXER_MCP_AUTH_MODE?.trim().toLowerCase()
+  const authMode: AuthMode = authModeEnv === 'apikey' ? 'apikey' : 'token'
   const logLevel = (env.HYPEDEXER_LOG_LEVEL?.trim().toLowerCase() as LogLevel) || DEFAULTS.logLevel
 
   const wsUrl = env.HYPEDEXER_WS_URL?.trim() || undefined
@@ -162,12 +184,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     rpcBaseUrl,
     rpcWsUrl,
     ...(wsUrl ? { wsUrl } : {}),
-    enabledGroups: resolveGroups(toolsSpec, Boolean(apiKey)),
+    // In apikey mode keys arrive per request, so keyed groups must register;
+    // each request is then re-gated in createRequestContext.
+    enabledGroups: resolveGroups(toolsSpec, Boolean(apiKey) || authMode === 'apikey'),
     toolsSpec,
     transport,
     httpPort: num(env.HYPEDEXER_MCP_HTTP_PORT, DEFAULTS.httpPort),
     httpHost: env.HYPEDEXER_MCP_HTTP_HOST?.trim() || DEFAULTS.httpHost,
     httpAuthToken: env.HYPEDEXER_MCP_HTTP_TOKEN?.trim() || undefined,
+    authMode,
+    upstreamSecret: env.HYPEDEXER_MCP_UPSTREAM_SECRET?.trim() || undefined,
     httpAllowedHosts: (() => {
       const extra = csv(env.HYPEDEXER_MCP_HTTP_ALLOWED_HOSTS)
       return extra.length > 0 ? [...DEFAULTS.httpAllowedHosts, ...extra] : DEFAULTS.httpAllowedHosts

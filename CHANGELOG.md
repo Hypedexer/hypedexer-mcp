@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+Hosted multi-tenant HTTP mode, groundwork for mcp.hypedexer.com and MCP plans.
+
+- New `HYPEDEXER_MCP_AUTH_MODE=apikey`: each request's bearer is the caller's
+  own HypeDexer API key, carried by a per-request tool context (per-request
+  keyed client and group gating; no bearer serves only the keyless public
+  tools). Plans and credits stay enforced upstream, per caller.
+- Upstream metering headers in apikey mode: `X-MCP-Call` (one UUID per tool
+  call, shared across a tool's whole REST fan-out) and `X-MCP-Server` (shared
+  secret from `HYPEDEXER_MCP_UPSTREAM_SECRET`, lets the edge authorize
+  MCP-only keys).
+- `HypedexerClientOptions.defaultHeaders` pass-through to the vendored
+  `HttpClient`.
+
 ## 2.1.0 (2026-09-30)
 
 Same-day support for the permissionless HIP-4 upgrade (Hyperliquid, 2026-08-29) and for order types on fills. Additive: 2 new tools, 0 tools removed, 0 required inputs added.

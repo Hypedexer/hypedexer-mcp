@@ -8,6 +8,8 @@ export interface HypedexerClientOptions {
   fetch?: typeof fetch
   timeoutMs?: number
   userAgent?: string
+  /** Extra headers sent on every request (e.g. hosted-MCP metering headers). */
+  defaultHeaders?: Record<string, string>
 }
 
 export type Query = Record<string, string | number | boolean | null | undefined>
@@ -27,6 +29,7 @@ export class HypedexerClient {
       ...(opts.fetch !== undefined ? { fetch: opts.fetch } : {}),
       ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
       ...(opts.userAgent !== undefined ? { userAgent: opts.userAgent } : {}),
+      ...(opts.defaultHeaders !== undefined ? { defaultHeaders: opts.defaultHeaders } : {}),
     })
   }
 

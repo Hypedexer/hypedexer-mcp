@@ -106,6 +106,16 @@ HYPEDEXER_API_KEY=… HYPEDEXER_MCP_TRANSPORT=http HYPEDEXER_MCP_HTTP_TOKEN=… 
 # GET  http://127.0.0.1:3000/health
 ```
 
+For the multi-tenant hosted deployment, set `HYPEDEXER_MCP_AUTH_MODE=apikey`: each
+request's `Authorization: Bearer <key>` is then the caller's own HypeDexer API key,
+forwarded upstream as `X-API-Key` so plans and credits are enforced per caller,
+exactly as for direct REST calls. Requests without a bearer get the keyless
+`hl_public_*` tools only. Two metering headers ride every upstream request:
+`X-MCP-Call` (one UUID per tool call, however many REST requests it fans out
+into) and `X-MCP-Server` (the shared secret from
+`HYPEDEXER_MCP_UPSTREAM_SECRET`, which marks traffic as coming from the hosted
+server and is what authorizes MCP-only keys).
+
 The HTTP transport is hardened by default:
 
 - **Bearer auth.** When `HYPEDEXER_MCP_HTTP_TOKEN` is set, every `/mcp` request must send `Authorization: Bearer <token>` (constant-time comparison, 401 otherwise). Binding beyond loopback **without** a token refuses to start.
@@ -120,7 +130,9 @@ The HTTP transport is hardened by default:
 | `HYPEDEXER_MCP_TOOLS` | Tool groups: a preset (`public`/`core`/`all`) or a comma list. | `all` |
 | `HYPEDEXER_MCP_TRANSPORT` | `stdio` or `http`. | `stdio` |
 | `HYPEDEXER_MCP_HTTP_PORT` / `_HOST` | HTTP transport bind. | `3000` / `127.0.0.1` |
-| `HYPEDEXER_MCP_HTTP_TOKEN` | Bearer token required on `/mcp`. Mandatory for non-loopback binds. | _(none)_ |
+| `HYPEDEXER_MCP_HTTP_TOKEN` | Bearer token required on `/mcp`. Mandatory for non-loopback binds in `token` mode. | _(none)_ |
+| `HYPEDEXER_MCP_AUTH_MODE` | `token` (shared bearer) or `apikey` (each bearer is the caller's API key, hosted multi-tenant). | `token` |
+| `HYPEDEXER_MCP_UPSTREAM_SECRET` | Shared secret sent upstream as `X-MCP-Server` in `apikey` mode (MCP-only keys, per-call metering). | _(none)_ |
 | `HYPEDEXER_MCP_HTTP_ALLOWED_HOSTS` | Extra `Host` header names accepted (comma list). Loopback always allowed. | _(none)_ |
 | `HYPEDEXER_MCP_HTTP_ALLOWED_ORIGINS` | Extra full `Origin` values accepted (comma list). | _(none)_ |
 | `HYPEDEXER_BASE_URL` | HypeDexer API base. | `https://api.hypedexer.com` |

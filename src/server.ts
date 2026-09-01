@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/server'
-import type { Config } from './config.js'
+import { type Config, resolveGroups } from './config.js'
 import { HypedexerClient } from './hypedexer/client.js'
 import { HyperliquidPublicClient } from './hyperliquid/public-client.js'
 import { type Logger, createLogger } from './logger.js'
@@ -41,11 +41,50 @@ export function createContext(
       })
     : null
 
-  if (!hd) {
+  if (!hd && config.authMode !== 'apikey') {
     logger.warn('no HYPEDEXER_API_KEY set - only the keyless `public` tool group is enabled')
   }
 
   return { hd, hl, config, logger }
+}
+
+/**
+ * Derive a per-request context from the process-wide one (apikey auth mode).
+ * The caller's bearer becomes the upstream X-API-Key, so the edge bills the
+ * caller's own plan and credits. `callId` is sent as X-MCP-Call on every
+ * upstream request of this MCP exchange: the edge counts one tool call per
+ * distinct id (a tool that fans out into several REST calls meters once).
+ * The X-MCP-Server secret, when configured, marks traffic as coming from the
+ * hosted server, which is what authorizes MCP-only keys.
+ *
+ * Without a bearer the request is keyless: public tools only, `hd` null.
+ * The shared `hl` client is reused; only the keyed client is per-request.
+ */
+export function createRequestContext(
+  base: ToolContext,
+  apiKey: string | undefined,
+  callId: string,
+): ToolContext {
+  const { config, logger, hl } = base
+  const upstreamHeaders: Record<string, string> = { 'X-MCP-Call': callId }
+  if (config.upstreamSecret) upstreamHeaders['X-MCP-Server'] = config.upstreamSecret
+
+  const hd = apiKey
+    ? new HypedexerClient({
+        apiKey,
+        baseUrl: config.hypedexerBaseUrl,
+        timeoutMs: config.requestTimeoutMs,
+        userAgent: config.userAgent,
+        defaultHeaders: upstreamHeaders,
+      })
+    : null
+
+  const reqConfig: Config = {
+    ...config,
+    apiKey,
+    enabledGroups: resolveGroups(config.toolsSpec, Boolean(apiKey)),
+  }
+  return { hd, hl, config: reqConfig, logger }
 }
 
 /**
