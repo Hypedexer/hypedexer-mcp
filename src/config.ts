@@ -89,6 +89,13 @@ export interface Config {
   /** HTTP transport authentication mode: shared token or per-request API key. */
   authMode: AuthMode
   /**
+   * apikey mode only: refuse keyless requests with 401 instead of serving the
+   * keyless `hl_public_*` tools. The hosted deployment sets this: its free tier
+   * is an MCP_FREE key with a daily quota, not anonymous access, and an open
+   * keyless surface would be a free proxy to the Hyperliquid API on our egress.
+   */
+  requireKey: boolean
+  /**
    * Shared secret sent upstream as X-MCP-Server on every keyed request so the
    * edge can recognize traffic from the hosted MCP server (required for
    * MCP-only keys and per-tool-call metering). Optional: without it, regular
@@ -170,6 +177,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const transport: TransportKind = transportEnv === 'http' ? 'http' : DEFAULTS.transport
   const authModeEnv = env.HYPEDEXER_MCP_AUTH_MODE?.trim().toLowerCase()
   const authMode: AuthMode = authModeEnv === 'apikey' ? 'apikey' : 'token'
+  const requireKey = env.HYPEDEXER_MCP_REQUIRE_KEY?.trim() === '1'
   const logLevel = (env.HYPEDEXER_LOG_LEVEL?.trim().toLowerCase() as LogLevel) || DEFAULTS.logLevel
 
   const wsUrl = env.HYPEDEXER_WS_URL?.trim() || undefined
@@ -193,6 +201,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     httpHost: env.HYPEDEXER_MCP_HTTP_HOST?.trim() || DEFAULTS.httpHost,
     httpAuthToken: env.HYPEDEXER_MCP_HTTP_TOKEN?.trim() || undefined,
     authMode,
+    requireKey,
     upstreamSecret: env.HYPEDEXER_MCP_UPSTREAM_SECRET?.trim() || undefined,
     httpAllowedHosts: (() => {
       const extra = csv(env.HYPEDEXER_MCP_HTTP_ALLOWED_HOSTS)

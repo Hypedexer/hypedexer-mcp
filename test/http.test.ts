@@ -211,6 +211,19 @@ describe('http transport apikey mode (hosted multi-tenant)', () => {
     }
   })
 
+  it('refuses keyless requests when HYPEDEXER_MCP_REQUIRE_KEY=1', async () => {
+    handle = await startHttp(testConfig({ ...apikeyEnv, HYPEDEXER_MCP_REQUIRE_KEY: '1' }), logger)
+    const res = await raw(handle.port, { body: initializeBody })
+    expect(res.status).toBe(401)
+    expect(res.text).toContain('app.hypedexer.com')
+    // a bearer still works in that mode
+    const ok = await raw(handle.port, {
+      headers: { authorization: 'Bearer hd_test_1234567890' },
+      body: initializeBody,
+    })
+    expect(ok.status).toBe(200)
+  })
+
   it('registers keyed tools for a bearer key and forwards it with metering headers', async () => {
     handle = await startHttp(testConfig(apikeyEnv), logger)
     const captured: Array<{ url: string; headers: Record<string, string> }> = []

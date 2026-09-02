@@ -127,6 +127,15 @@ export async function startHttp(config: Config, logger: Logger): Promise<HttpHan
     const header = req.headers.authorization
     const provided = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined
     if (provided === undefined) {
+      if (config.requireKey) {
+        res.setHeader('WWW-Authenticate', 'Bearer')
+        rpcError(
+          res,
+          401,
+          'Unauthorized: send your HypeDexer API key as "Authorization: Bearer <key>". Get one at https://www.app.hypedexer.com/.',
+        )
+        return
+      }
       next()
       return
     }

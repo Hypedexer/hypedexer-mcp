@@ -12,6 +12,9 @@ Hosted multi-tenant HTTP mode, groundwork for mcp.hypedexer.com and MCP plans.
   call, shared across a tool's whole REST fan-out) and `X-MCP-Server` (shared
   secret from `HYPEDEXER_MCP_UPSTREAM_SECRET`, lets the edge authorize
   MCP-only keys).
+- `HYPEDEXER_MCP_REQUIRE_KEY=1` (apikey mode): refuse keyless requests with 401
+  instead of serving the keyless tools, for a hosted deployment whose free tier
+  is a quota'd key rather than anonymous access.
 - `HypedexerClientOptions.defaultHeaders` pass-through to the vendored
   `HttpClient`.
 
