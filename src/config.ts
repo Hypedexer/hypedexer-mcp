@@ -16,6 +16,7 @@ export const TOOL_GROUPS = [
   'builders',
   'twaps',
   'evm',
+  'elysium',
   'streams',
   'live',
   'rpc',

@@ -1,5 +1,6 @@
 import { analyticsTools } from './analytics.js'
 import { buildersTools } from './builders.js'
+import { elysiumTools } from './elysium.js'
 import { evmTools } from './evm.js'
 import { fillsTools } from './fills.js'
 import { fundingTools } from './funding.js'
@@ -36,6 +37,7 @@ export const allModules: ToolModule[] = [
   buildersTools,
   twapsTools,
   evmTools,
+  elysiumTools,
   streamsTools,
   liveTools,
   rpcTools,

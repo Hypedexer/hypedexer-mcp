@@ -11,6 +11,17 @@ Same-day support for the permissionless HIP-4 upgrade (Hyperliquid, 2026-08-29) 
 - `hd_fills_search` gained `include_order_type` (perp scope only, off by default): adds an `orderType` to each fill ("Limit", "Market", "Stop Market", "Take Profit Limit", ...) resolved from the originating order, null for fills predating order-status coverage (before 2026-06-27), roughly +300 ms per page. Requested on spot scope, the flag is not sent and the result carries a note.
 - Surface is now 85 tools with `all,info,rpc` (77 `hd_*` + 8 keyless `hl_public_*`). All five paths live-verified against the real API; `scripts/smoke-keyed.mjs` covers them.
 
+Elysium testnet (2026-09-30). Additive: new `elysium` group (in the `all` preset, not in `core`), 8 new tools, 0 tools removed.
+
+- `hd_elysium_stats` (current | daily), `hd_elysium_blocks` (list | one block | its transactions), `hd_elysium_transactions` (feed with from/to/method/type/system/spam filters | one tx with logs and decoded token transfers), `hd_elysium_logs`, `hd_elysium_batches` (what Elysium posted on HyperEVM), `hd_elysium_bridge` (transfers | track by any hash of the journey | retryables | token registry | reserves), `hd_elysium_tokens` (list | detail | holders | transfers) and `hd_elysium_user` (balances, optionally at a past block | activity | bridge history). Together they cover the 22 routes under `/elysium/testnet`; all 22 were exercised live through the built server.
+- Addresses, hashes, selectors and enums are validated by the input schemas, and a `status` that belongs to another bridge view is refused with a steering error, so a bad call never reaches the API.
+- Surface is now 93 tools with `all,info,rpc` (85 `hd_*` + 8 keyless `hl_public_*`).
+
+Security and maintenance (2026-09-30).
+
+- Runtime: `@modelcontextprotocol/node` 2.1.0, `@modelcontextprotocol/server` 2.2.0, `express` 5.2.1, and `hono` 4.13.x pinned as a direct dependency (it is a peer of the MCP node adapter, which overrides do not reach). Overrides for `@hono/node-server`, `qs`, `postcss`, `nanoid` and old `esbuild`. `pnpm audit` goes from 22 advisories (1 critical, 4 high, several on the HTTP stack of the hosted transport) to 1 low (esbuild 0.27 under tsup, fixed only in 0.28 which tsup does not support yet).
+- Dev: `vitest` 4.1.11, `vite` 6.4.x, `tsup` 8.5.1, `@modelcontextprotocol/client` latest.
+
 ## 2.0.0 (2026-08-05)
 
 Migration to the MCP 2026-07-28 protocol revision and the v2 SDK packages (closes #1). BREAKING at the protocol and deployment level; the 77-tool surface is unchanged (0 tools removed, 0 required inputs removed).

@@ -1,8 +1,8 @@
 # @hypedexer/mcp-server
 
-> [Model Context Protocol](https://modelcontextprotocol.io) server for the [HypeDexer](https://hypedexer.com) Hyperliquid indexer: 85 read-only tools over the full API surface (REST, both WebSocket hubs, HyperEVM JSON-RPC), plus keyless Hyperliquid public tools so it works with no API key at all.
+> [Model Context Protocol](https://modelcontextprotocol.io) server for the [HypeDexer](https://hypedexer.com) Hyperliquid indexer: 93 read-only tools over the full API surface (REST, both WebSocket hubs, HyperEVM JSON-RPC), plus keyless Hyperliquid public tools so it works with no API key at all.
 
-[![tools](https://img.shields.io/badge/tools-85%20read--only-8A2BE2?labelColor=333)](#tool-catalog)
+[![tools](https://img.shields.io/badge/tools-93%20read--only-8A2BE2?labelColor=333)](#tool-catalog)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.29-blue?labelColor=333)](https://github.com/modelcontextprotocol/typescript-sdk)
 [![node >= 22](https://img.shields.io/badge/node-%3E%3D22-3c873a?labelColor=333)](https://nodejs.org)
 [![tests](https://img.shields.io/badge/tests-71%20passing-brightgreen?labelColor=333)](#development)
@@ -30,9 +30,9 @@ This server collapses all of that behind **one tool contract**: uniform paginati
 
 |                |                                                                                  |
 | -------------- | -------------------------------------------------------------------------------- |
-| **Coverage**   | 85 tools: ~88 REST endpoints + 13 WS channels (2 hubs) + HyperEVM JSON-RPC       |
+| **Coverage**   | 93 tools: ~110 REST endpoints (incl. Elysium) + 13 WS channels + HyperEVM RPC    |
 | **Keyless**    | 8 `hl_public_*` tools hit the free Hyperliquid API: boots with no key            |
-| **Groups**     | 17 env-gated groups, 3 presets (`public` / `core` / `all`)                       |
+| **Groups**     | 18 env-gated groups, 3 presets (`public` / `core` / `all`)                       |
 | **Transports** | stdio (default) + streamable HTTP (stateless, MCP 2026-07-28)                    |
 | **Safety**     | Read-only by construction; state-mutating RPC methods are refused                |
 | **Runtime**    | Node >= 22, native `WebSocket`, no `ws` dependency                               |
@@ -196,6 +196,7 @@ All tools are read-only. `hl_public_*` need no key; `hd_*` need `HYPEDEXER_API_K
 | `builders` | `hd_builders`, `hd_builder_stats`, `hd_builder_users` |
 | `twaps` | `hd_twaps_search`, `hd_twaps_stats`, `hd_twap_detail` |
 | `evm` | `hd_evm_stats`, `hd_evm_blocks`, `hd_evm_transactions`, `hd_evm_logs`, `hd_evm_transfers`, `hd_evm_bridge_events`, `hd_evm_user`, `hd_evm_hip3_backstop` |
+| `elysium` | `hd_elysium_stats`, `hd_elysium_blocks`, `hd_elysium_transactions`, `hd_elysium_logs`, `hd_elysium_batches`, `hd_elysium_bridge`, `hd_elysium_tokens`, `hd_elysium_user` (Elysium testnet, Kinetiq's L2: the 22 `/elysium/testnet` routes) |
 | `streams` | `hd_stream_completed_trades`, `hd_stream_fills_spot`, `hd_stream_recent_activity`, `hd_stream_liquidations`, `hd_stream_hip4_events` |
 | `live` | `hd_live_all_fills`, `hd_live_user_fills`, `hd_live_bbo`, `hd_live_l2_book`, `hd_live_l4_book`, `hd_live_l4_book_updates`, `hd_live_trades`, `hd_live_all_mids` |
 | `rpc` | `hd_rpc_call`, `hd_rpc_block_number`, `hd_rpc_call_contract`, `hd_rpc_get_logs`, `hd_rpc_get_block`, `hd_rpc_subscribe` |
@@ -278,7 +279,7 @@ hypedexer-mcp/
 │   ├── core/           vendored transport: HttpClient, errors, pagination, time, envelopes
 │   ├── hypedexer/      keyed API client, quirks layer, WS + RPC clients
 │   ├── hyperliquid/    keyless public API client
-│   ├── tools/          17 tool groups + shared contracts (schemas, pagination, output, errors)
+│   ├── tools/          18 tool groups + shared contracts (schemas, pagination, output, errors)
 │   └── transports/     stdio + streamable HTTP
 ├── test/               71 unit tests + gated live suite
 ├── scripts/            launch.sh (Claude Desktop WSL) + smoke scripts

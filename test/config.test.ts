@@ -7,6 +7,7 @@ describe('resolveGroups', () => {
     expect(g.has('public')).toBe(true)
     expect(g.has('hip3')).toBe(true)
     expect(g.has('evm')).toBe(true)
+    expect(g.has('elysium')).toBe(true)
     // info and rpc are opt-in only and excluded from the `all` preset.
     expect(g.has('info')).toBe(false)
     expect(g.has('rpc')).toBe(false)

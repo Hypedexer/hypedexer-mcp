@@ -20,7 +20,7 @@ afterEach(async () => {
 })
 
 describe('tool registration over an in-memory MCP session', () => {
-  it('registers all 85 tools with valid, unique, snake_case schemas (all groups)', async () => {
+  it('registers all 93 tools with valid, unique, snake_case schemas (all groups)', async () => {
     const { client, close } = await connect({
       HYPEDEXER_API_KEY: 'dummy',
       HYPEDEXER_MCP_TOOLS: 'all,info,rpc',
@@ -28,7 +28,7 @@ describe('tool registration over an in-memory MCP session', () => {
     cleanup = close
     const { tools } = await client.listTools()
 
-    expect(tools).toHaveLength(85)
+    expect(tools).toHaveLength(93)
 
     const names = tools.map((t) => t.name)
     expect(new Set(names).size).toBe(names.length) // unique
@@ -42,7 +42,8 @@ describe('tool registration over an in-memory MCP session', () => {
     }
 
     expect(names.filter((n) => n.startsWith('hl_public_'))).toHaveLength(8)
-    expect(names.filter((n) => n.startsWith('hd_'))).toHaveLength(77)
+    expect(names.filter((n) => n.startsWith('hd_'))).toHaveLength(85)
+    expect(names.filter((n) => n.startsWith('hd_elysium_'))).toHaveLength(8)
     expect(names.filter((n) => n.startsWith('hd_stream_'))).toHaveLength(5)
     expect(names.filter((n) => n.startsWith('hd_live_'))).toHaveLength(8)
     expect(names.filter((n) => n.startsWith('hd_rpc_'))).toHaveLength(6)
