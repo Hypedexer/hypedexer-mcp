@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.0 (2026-09-30)
 
 Same-day support for the permissionless HIP-4 upgrade (Hyperliquid, 2026-08-29) and for order types on fills. Additive: 2 new tools, 0 tools removed, 0 required inputs added.
 
