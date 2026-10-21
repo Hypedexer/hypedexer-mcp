@@ -13,6 +13,7 @@ export interface PaginationOut {
   next_cursor?: string
   next_offset?: number
   next_end_time?: number
+  next_page?: number
   hint?: string
 }
 
