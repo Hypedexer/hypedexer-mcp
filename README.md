@@ -1,8 +1,8 @@
 # @hypedexer/mcp-server
 
-> [Model Context Protocol](https://modelcontextprotocol.io) server for the [HypeDexer](https://hypedexer.com) Hyperliquid indexer: 93 read-only tools over the full API surface (REST, both WebSocket hubs, HyperEVM JSON-RPC), plus keyless Hyperliquid public tools so it works with no API key at all.
+> [Model Context Protocol](https://modelcontextprotocol.io) server for the [HypeDexer](https://hypedexer.com) Hyperliquid indexer: 98 read-only tools over the full API surface (REST, both WebSocket hubs, HyperEVM JSON-RPC), plus keyless Hyperliquid public tools so it works with no API key at all.
 
-[![tools](https://img.shields.io/badge/tools-93%20read--only-8A2BE2?labelColor=333)](#tool-catalog)
+[![tools](https://img.shields.io/badge/tools-98%20read--only-8A2BE2?labelColor=333)](#tool-catalog)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.29-blue?labelColor=333)](https://github.com/modelcontextprotocol/typescript-sdk)
 [![node >= 22](https://img.shields.io/badge/node-%3E%3D22-3c873a?labelColor=333)](https://nodejs.org)
 [![tests](https://img.shields.io/badge/tests-71%20passing-brightgreen?labelColor=333)](#development)
@@ -30,13 +30,13 @@ This server collapses all of that behind **one tool contract**: uniform paginati
 
 |                |                                                                                  |
 | -------------- | -------------------------------------------------------------------------------- |
-| **Coverage**   | 93 tools: ~110 REST endpoints (incl. Elysium) + 13 WS channels + HyperEVM RPC    |
+| **Coverage**   | 98 tools: REST endpoints (incl. Elysium, /market history, typed POST /info) + 19 WS channels + HyperEVM RPC |
 | **Keyless**    | 8 `hl_public_*` tools hit the free Hyperliquid API: boots with no key            |
-| **Groups**     | 18 env-gated groups, 3 presets (`public` / `core` / `all`)                       |
+| **Groups**     | 20 env-gated groups, 3 presets (`public` / `core` / `all`)                       |
 | **Transports** | stdio (default) + streamable HTTP (stateless, MCP 2026-07-28)                    |
 | **Safety**     | Read-only by construction; state-mutating RPC methods are refused                |
 | **Runtime**    | Node >= 22, native `WebSocket`, no `ws` dependency                               |
-| **Tests**      | 79 unit tests (mocked fetch + in-memory MCP client) + gated live suite           |
+| **Tests**      | 181 unit tests (mocked fetch + in-memory MCP client) + gated live suite          |
 
 > **AI coding agents:** contributing to this repo? Read [`AGENTS.md`](./AGENTS.md) first: verification loop, the tool-module pattern, hard-won MCP lessons, and the upstream quirks you must not "fix". Consuming the server through an MCP client? The contract is in [How results are shaped](#how-results-are-shaped-for-agents) and in each tool's description.
 
@@ -183,8 +183,8 @@ No `env`, no `WSLENV`, no key pasted into JSON. Restart Claude Desktop. (On macO
 
 `public` (keyless) is always on. Keyed groups self-skip when no key is set.
 
-- **Presets:** `public` (keyless only) · `core` (public + fills, markets, analytics, traders, liquidations, funding, vaults) · `all` (everything except the opt-in-only `info` and `rpc` groups).
-- **Groups:** `public`, `fills`, `markets`, `analytics`, `traders`, `liquidations`, `funding`, `vaults`, `hip3`, `hip4`, `builders`, `twaps`, `evm`, `streams`, `live`, `rpc`, `info`.
+- **Presets:** `public` (keyless only) · `core` (public + fills, markets, exchange, account, analytics, traders, liquidations, funding, vaults) · `all` (everything except the opt-in-only `info` and `rpc` groups).
+- **Groups:** `public`, `fills`, `markets`, `exchange`, `account`, `analytics`, `traders`, `liquidations`, `funding`, `vaults`, `hip3`, `hip4`, `builders`, `twaps`, `evm`, `elysium`, `streams`, `live`, `rpc`, `info`.
 
 Two groups are never in a preset and must be requested by name:
 - `info`: the raw `/info` escape hatch (`HYPEDEXER_MCP_TOOLS=all,info`).
@@ -199,8 +199,10 @@ All tools are read-only. `hl_public_*` need no key; `hd_*` need `HYPEDEXER_API_K
 | `public` | `hl_public_all_mids`, `hl_public_perp_meta`, `hl_public_spot_meta`, `hl_public_l2_book`, `hl_public_candles`, `hl_public_funding_history`, `hl_public_predicted_fundings`, `hl_public_clearinghouse_state` |
 | `fills` | `hd_fills_search`, `hd_fills_count` |
 | `markets` | `hd_market_snapshot_24h`, `hd_market_daily_series`, `hd_user_coin_distribution` |
+| `exchange` | `hd_candles` (candles + one-call volume totals, e.g. all-time volume of a spot pair), `hd_exchange_info`, `hd_order_book`, `hd_market_history`, `hd_spot_meta` |
+| `account` | `hd_account_state` (live wallet state: positions, spot balances, open orders, fees, sub-accounts, staking, ...), `hd_account_history` (orders, ledger, TWAP slices, order status) |
 | `analytics` | `hd_analytics_fills_stats`, `hd_analytics_priority_fees`, `hd_analytics_liquidations_stats` |
-| `traders` | `hd_user_profile`, `hd_user_coins`, `hd_traders_leaderboard`, `hd_traders_active`, `hd_completed_trades_search`, `hd_completed_trade_fills` |
+| `traders` | `hd_user_profile`, `hd_users_batch_performance`, `hd_user_coins`, `hd_traders_leaderboard`, `hd_traders_active`, `hd_completed_trades_search`, `hd_completed_trade_fills` |
 | `liquidations` | `hd_liquidations_search` |
 | `funding` | `hd_funding_predicted`, `hd_funding_history`, `hd_user_funding` |
 | `vaults` | `hd_vaults_list`, `hd_vault_details`, `hd_vault_snapshots`, `hd_user_vault_equities` |
@@ -210,8 +212,8 @@ All tools are read-only. `hl_public_*` need no key; `hd_*` need `HYPEDEXER_API_K
 | `twaps` | `hd_twaps_search`, `hd_twaps_stats`, `hd_twap_detail` |
 | `evm` | `hd_evm_stats`, `hd_evm_blocks`, `hd_evm_transactions`, `hd_evm_logs`, `hd_evm_transfers`, `hd_evm_bridge_events`, `hd_evm_user`, `hd_evm_hip3_backstop` |
 | `elysium` | `hd_elysium_stats`, `hd_elysium_blocks`, `hd_elysium_transactions`, `hd_elysium_logs`, `hd_elysium_batches`, `hd_elysium_bridge`, `hd_elysium_tokens`, `hd_elysium_user` (Elysium testnet, Kinetiq's L2: the 22 `/elysium/testnet` routes) |
-| `streams` | `hd_stream_completed_trades`, `hd_stream_fills_spot`, `hd_stream_recent_activity`, `hd_stream_liquidations`, `hd_stream_hip4_events` |
-| `live` | `hd_live_all_fills`, `hd_live_user_fills`, `hd_live_bbo`, `hd_live_l2_book`, `hd_live_l4_book`, `hd_live_l4_book_updates`, `hd_live_trades`, `hd_live_all_mids` |
+| `streams` | `hd_stream_liquidations` |
+| `live` | `hd_live_all_fills`, `hd_live_user_fills`, `hd_live_bbo`, `hd_live_l2_book`, `hd_live_l4_book`, `hd_live_l4_book_updates`, `hd_live_trades`, `hd_live_all_mids`, `hd_live_feed` |
 | `rpc` | `hd_rpc_call`, `hd_rpc_block_number`, `hd_rpc_call_contract`, `hd_rpc_get_logs`, `hd_rpc_get_block`, `hd_rpc_subscribe` |
 | `info` | `hd_info_raw` |
 
@@ -219,18 +221,16 @@ All tools are read-only. `hl_public_*` need no key; `hd_*` need `HYPEDEXER_API_K
 
 MCP tools are request/response; HypeDexer's WebSockets push continuously. The `hd_stream_*` and `hd_live_*` tools bridge the gap: each opens the socket, subscribes to one channel, collects pushed messages for a bounded window (`seconds`, 1-30, default 5, or until `max_items`), then closes and returns the batch: a **point-in-time snapshot, not a standing subscription**. Call again for a fresh window.
 
-- **`streams`**: the indexed *multiplex* endpoint (`wss://.../ws`): `completed_trades` (optional `user` scope), `fills_spot` (lowest-latency spot fills; for history use `hd_fills_search` with `scope="spot"`), `recent_activity`, `liquidation`, `hip4_events`.
-- **`live`**: the Live *mirror* endpoint (`wss://.../ws?mode=mirror`): order books (`l2Book`/`l4Book`/`l4BookUpdates`), `bbo`, `trades` (per `coin`), the `allFills` firehose, `userFills` (per `user`), and `allMids`. Book channels return the current snapshot in the first frame.
+- **`streams`**: the indexed endpoint (`wss://.../ws`) serves `liquidations` (plural on subscribe), with `user`, `users`, `amount_dollars` and `builder` filters; the server replays up to 200 cached events first. The former `completed_trades`, `fills_spot`, `recent_activity` and `hip4_events` channels are refused upstream (2026-10-21), so their tools were removed: use `hd_completed_trades_search`, `hd_fills_search scope="spot"` and `hd_hip4_fills`.
+- **`live`**: the Live *mirror* endpoint (`wss://.../ws?mode=mirror`): order books (`l2Book`/`l4Book`/`l4BookUpdates`), `bbo`, `trades` (per `coin`), the `allFills` firehose, `userFills` (per `user`), `allMids` (optional `dex`), and through `hd_live_feed`: `candle` / `allCandles`, `activeAssetCtx`, `fundingRates`, `setOracleUpdates`, `allTwapStatusUpdates`, `orderUpdates`, `userEvents`, `userFundings`, `userNonFundingLedgerUpdates`. Book channels return the current snapshot in the first frame.
 
-  Per-channel status (live-verified 2026-07-01, the upstream mirror hub is still maturing):
+  Per-channel status (live-verified 2026-10-21):
 
   | Channel | Status |
   | --- | --- |
-  | `allMids`, `l2Book`, `allFills`, `userFills` | Working: deliver data reliably. |
-  | `bbo` | Subscription accepted but no frames emitted upstream. Use `l2Book` (top level = best bid/offer). |
-  | `trades` | Rejected upstream ("Unsupported subscription"). Use `hd_stream_completed_trades` or `l2Book`. |
+  | `allMids`, `l2Book`, `allFills`, `userFills`, `bbo`, `trades` and the `hd_live_feed` channels | Working: deliver data. |
   | `l4Book` | Deep snapshots can exceed the runtime WebSocket decompression limit and error. Use `l2Book`. |
-  | `l4BookUpdates` | Accepted but sparse; may return nothing in a short window. |
+  | `l4BookUpdates` | Acknowledged but no data frame arrived in tests. Use `hd_order_book view=diffs`. |
 
   The mirror hub also rate-limits rapid reconnects (a back-to-back second connection may be refused), so space snapshot calls a few seconds apart.
 
@@ -268,7 +268,11 @@ Condensed reference; the full catalog with rationale lives in [`DESIGN.md`](./DE
 | HIP-4 oracle-run rows report an empty `venue` / `deployer` | Flagged in a note; the same operator is `"oracle"` on questions and providers |
 | Unbounded upstream response sizes | 25k-token budget, tail-truncation with steering notes |
 | Mirror WS ack frame mimics the data envelope | Filtered out of snapshots |
-| Dead / degraded channels (`rpc` host, `bbo`, `trades`, `l4Book`) | Gated or flagged in tool descriptions with an alternative |
+| Dead / degraded channels (`rpc` host, `l4Book`, `l4BookUpdates`) | Gated or flagged in tool descriptions with an alternative |
+| `GET /fills/count` ignores coin and time filters | `hd_fills_count` reads `X-Total-Count` of `POST /info type=fills` instead |
+| HIP-3 fills/ohlcv/oracle/user-fills ignore `start_time`/`end_time` | Windows sent as `start`/`end` |
+| Offsets ignored on some lists (`/users/active`, `/users/{u}/coins`, `/vaults/vaultSummaries`, `/hip3/ohlcv`, `/hip3/oracle/stats`, `/builders/{a}/users`) | No fake offset paging on those tools |
+| `/hip4/analytics` answers 500 to any window or cursor | The tool never sends them |
 
 ## Development
 
@@ -276,7 +280,7 @@ Condensed reference; the full catalog with rationale lives in [`DESIGN.md`](./DE
 pnpm install
 pnpm build          # tsup -> dist/
 pnpm typecheck      # strict tsc
-pnpm test           # vitest (mocked fetch), 71 tests
+pnpm test           # vitest (mocked fetch), 181 tests
 pnpm test:live      # also runs live keyless tests against api.hyperliquid.xyz
 pnpm smoke          # build + in-memory MCP client smoke (keyless)
 pnpm inspect        # build + MCP Inspector
@@ -292,9 +296,9 @@ hypedexer-mcp/
 │   ├── core/           vendored transport: HttpClient, errors, pagination, time, envelopes
 │   ├── hypedexer/      keyed API client, quirks layer, WS + RPC clients
 │   ├── hyperliquid/    keyless public API client
-│   ├── tools/          18 tool groups + shared contracts (schemas, pagination, output, errors)
+│   ├── tools/          20 tool groups + shared contracts (schemas, pagination, output, errors)
 │   └── transports/     stdio + streamable HTTP
-├── test/               71 unit tests + gated live suite
+├── test/               181 unit tests + gated live suite
 ├── scripts/            launch.sh (Claude Desktop WSL) + smoke scripts
 ├── DESIGN.md           design doc: catalog, layering, tool-design guidance
 ├── AGENTS.md           contribution guide for AI coding agents

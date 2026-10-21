@@ -18,6 +18,75 @@ Hosted multi-tenant HTTP mode, groundwork for mcp.hypedexer.com and MCP plans.
 - `HypedexerClientOptions.defaultHeaders` pass-through to the vendored
   `HttpClient`.
 
+Doc-and-live audit (2026-10-21): every change below was checked against the
+online HypeDexer docs and a live call. Surface: 98 tools with `all,info,rpc`
+(9 added, 4 removed); two new groups, `exchange` and `account`, both in the
+`core` and `all` presets.
+
+- New `hd_candles` (POST /info candleSnapshot on HypeDexer, intervals 5s, 30s,
+  1m, 5m, 15m, 30m, 1h, 4h, 1d) with an in-process `summary`: base_volume,
+  trades, open/close/high/low and an estimated quote volume. Omitting
+  start_time reads from the first candle, so `include_candles=false` gives an
+  all-time total in one call (e.g. spot `@307`).
+- New `hd_exchange_info` (POST /info: dataCoverage, metaAndAssetCtxs per coin,
+  allMids with dex, perpDexs, allPerpMetas, meta, perpDexLimits,
+  perpDexStatus, perpsAtOpenInterestCap, perp and spot-pair deploy auctions,
+  exchangeStatus, liquidatable, maxMarketOrderNtls, borrow/lend reserves and
+  borrowLendReserveHistory, validatorL1Votes).
+- New `hd_order_book` (POST /info l2Book, currentDepth, marketLiquidity,
+  l2BookDiffSnapshot, trades).
+- New `hd_market_history` (GET /market/coins, bbo, spread, depth, slippage,
+  book, liquidity-report).
+- New `hd_spot_meta` (resolve `@N` / pair / token names from spotMeta, plus
+  GET /spot/pairs, /spot/tokens, /spot/auctions/live, /spot/auctions/hist).
+- New `hd_account_state` (20 proxied account views over POST /info, including
+  multi-user clearinghouseState) and `hd_account_history` (historicalOrders
+  paged through the X-Has-More / X-Next-Cursor headers, orderStatus,
+  userNonFundingLedgerUpdates, userTwapSliceFills).
+- New `hd_users_batch_performance` (POST /users/batch/performance) and
+  `hd_live_feed` (10 more Live WS channels: candle, allCandles,
+  activeAssetCtx, fundingRates, setOracleUpdates, allTwapStatusUpdates,
+  orderUpdates, userEvents, userFundings, userNonFundingLedgerUpdates).
+- `hd_user_profile` gains views account, equity_history, pnl_calendar and
+  top_trades, and a `window` param. `hd_traders_leaderboard` gains window mode
+  (7d, 30d, all) with page, min_trades, limit up to 500, and `by` becomes an
+  optional enum with win_rate, pnl_pct and unrealized_pnl.
+- `hd_builder_users` gains view=external_activity (POST
+  /builders/{addr}/external-activity).
+- Fixed: `hd_fills_count` was always the global total (GET /fills/count ignores
+  coin and time); it now reads the X-Total-Count of POST /info type=fills per
+  coin, side and window, all-time when no window is given.
+- Fixed: HIP-3 fills, ohlcv, oracle stats and user fills sent
+  `start_time`/`end_time`, which the API ignores; they now send `start`/`end`.
+- Fixed: HIP-4 fills, fees and settlements sent windows as bare dates; they now
+  send epoch ms. `hd_hip4_analytics` no longer sends start/end/offset (500 or
+  ignored upstream).
+- Fixed: `hd_stream_liquidations` subscribed the refused singular
+  `liquidation`; it now subscribes `liquidations` and takes user, users,
+  amount_dollars and builder. Removed `hd_stream_completed_trades`,
+  `hd_stream_fills_spot`, `hd_stream_recent_activity` and
+  `hd_stream_hip4_events`: the server refuses those channels.
+- Fixed: `hd_user_funding` paging skipped the rest of a settlement split across
+  two pages.
+- Removed fake offset paging where the API ignores offset: `hd_traders_active`,
+  `hd_user_coins`, `hd_vaults_list`, `hd_hip3_ohlcv`, `hd_hip3_oracle_stats`,
+  `hd_builder_users` (whose limit is now capped at the upstream 100).
+- New filters: fills (side, size_usd, order, has_priority_gas, coins,
+  time_range), completed trades (user, direction, min_pnl, max_pnl,
+  sort_dir), HyperEVM transactions/logs/transfers/bridge events, multi-value
+  ledger event_type, HIP-3 backstop transfers/summary/fills, HIP-3 assets,
+  auctions, snapshots, fills, leaderboard (trades, fees, dex_id), trader stats,
+  user fills and gossip history, HIP-4 markets, questions, outcome tokens,
+  fees, settlements, priority-fee stats coin, top-traders sort/limit, per-user
+  TWAP filters, TWAP fills order, vault details limit, liquidations
+  amount_dollars and limit up to 1000, allMids dex, Elysium token search
+  capped at the upstream 64 characters.
+- Descriptions corrected against live behaviour: recent liquidations are a
+  ~2h window, fills stats ignore start/end and stop at 168h, the priority-fee
+  daily series ends 2026-07-11, gossip winners can be wallets, backstop
+  principal flows are recorded, `bbo` and `trades` now stream,
+  `l4BookUpdates` sends no data.
+
 ## 2.1.0 (2026-09-30)
 
 Same-day support for the permissionless HIP-4 upgrade (Hyperliquid, 2026-08-29) and for order types on fills. Additive: 2 new tools, 0 tools removed, 0 required inputs added.

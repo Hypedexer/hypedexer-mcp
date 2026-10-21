@@ -2,11 +2,13 @@
 
 > 2026-08-05: transports migrated to MCP spec 2026-07-28 / SDK v2 (stateless HTTP via `createMcpHandler`, no sessions; SDK packages `@modelcontextprotocol/server`/`node`/`client`, zod 4). Transport details below describe the original 1.x design; `src/transports/http.ts` is authoritative.
 >
+> 2026-10-21: doc-and-live audit. The full online doc (docs.hypedexer.com) was read and every gap was live-tested before wiring. Added the `exchange` group (hd_candles, hd_exchange_info, hd_order_book, hd_market_history, hd_spot_meta) and the `account` group (hd_account_state, hd_account_history), both in `core` and `all`; added hd_users_batch_performance and hd_live_feed; removed four stream tools whose channels the server now refuses. 98 tools with `all,info,rpc`. Details in the "2026-10-21 audit" section after the catalog and in CHANGELOG.md.
+>
 > Source: research+design workflow (wf_50bf6e52). Catalog grounded against ~/hypedexer-sdk/ENDPOINTS.md (100 entry points). MCP SDK specifics verified against installed @modelcontextprotocol/sdk@1.29.0.
 
 ## Summary
 
-A single, buildable design for a production-grade HypeDexer MCP server in TypeScript (ESM, Node >=20, official @modelcontextprotocol/sdk + Zod). It vendors the already-proven SDK core (HttpClient + error taxonomy + 4-kind pagination + time/sentinel handling + 3 envelope families) into src/core/, adds a key-free Hyperliquid public-info client, and exposes 93 consolidated, agent-shaped read-only tools across 18 env-gated domain groups (including `streams` + `live` groups that snapshot the two WebSocket hubs, and an `rpc` group for the HyperEVM JSON-RPC product). It runs with no key (the 8 hl_public_* tools hit api.hyperliquid.xyz directly) and unlocks the paid HypeDexer surface when HYPEDEXER_API_KEY is set. Both stdio (Claude Desktop/Cursor) and streamable HTTP (hosted mcp.hypedexer.com) transports ship. Every documented server quirk (asc-cursor corruption, 1970 sentinels, total_count=page-size, not_yet_live, key-shift drops, ClickHouse 500 on /spot, IPv4 winner mislabel) is normalized in one quirks layer so agents never see raw noise. Tools return structuredContent + a concise text summary, uniform pagination handles (next_cursor/next_offset/next_end_time + a steering hint), recovery-guiding errors, and a 25k-token budget with truncate-with-steering.
+A single, buildable design for a production-grade HypeDexer MCP server in TypeScript (ESM, Node >=20, official @modelcontextprotocol/sdk + Zod). It vendors the already-proven SDK core (HttpClient + error taxonomy + 4-kind pagination + time/sentinel handling + 3 envelope families) into src/core/, adds a key-free Hyperliquid public-info client, and exposes 98 consolidated, agent-shaped read-only tools across 20 env-gated domain groups (including `streams` + `live` groups that snapshot the two WebSocket hubs, and an `rpc` group for the HyperEVM JSON-RPC product). It runs with no key (the 8 hl_public_* tools hit api.hyperliquid.xyz directly) and unlocks the paid HypeDexer surface when HYPEDEXER_API_KEY is set. Both stdio (Claude Desktop/Cursor) and streamable HTTP (hosted mcp.hypedexer.com) transports ship. Every documented server quirk (asc-cursor corruption, 1970 sentinels, total_count=page-size, not_yet_live, key-shift drops, ClickHouse 500 on /spot, IPv4 winner mislabel) is normalized in one quirks layer so agents never see raw noise. Tools return structuredContent + a concise text summary, uniform pagination handles (next_cursor/next_offset/next_end_time + a steering hint), recovery-guiding errors, and a 25k-token budget with truncate-with-steering.
 
 ## Architecture
 
@@ -14,7 +16,7 @@ Request flow: an MCP tool call -> Zod input parse (strict, recovery-steering err
 
 Layering is strict and one-directional: core/ (transport, errors, time, pagination, envelope types) knows nothing about MCP; hypedexer/ and hyperliquid/ are thin typed callers over core; tools/ is the only layer that imports the MCP SDK and Zod; transports/ only wires a built McpServer to a channel. This keeps the network/normalization code unit-testable against the saved sample JSON without touching the MCP machinery.
 
-Tool philosophy follows Anthropic's writing-tools-for-agents guidance: we do NOT mirror all 94 REST endpoints. We consolidate the REST surface to 64 workflow tools using three moves: (1) fold list+detail into one tool with an id/ticker param that switches to single-record mode; (2) fold sibling endpoints behind a `view` enum (e.g. hip3 auctions live|current|history, evm stats current|daily); (3) fold recent/all and perp/spot scopes into one search tool with a scope flag. The /spot REST endpoints, broken upstream (500) at design time, shipped anyway folded into hd_fills_search as scope=spot; upstream fixed them on 2026-07-06 and they now return data (live-verified). hd_stream_fills_spot remains the low-latency push source. On top of the 64 Data-API REST tools, three groups extend coverage to the rest of the HypeDexer surface: `streams` (5 tools, the indexed multiplex WS channels), `live` (8 tools, the Live mirror WS channels: order books, mids, fills), and `rpc` (6 tools, the HyperEVM JSON-RPC product over HTTP + an eth_subscribe snapshot), and the permissionless HIP-4 attribution surface (`hd_hip4_providers`, `hd_hip4_deployers`, shipped 2026-08-29 the day the upgrade landed), and `elysium` (8 tools over the 22 Elysium testnet routes, added 2026-09-30). 93 tools total.
+Tool philosophy follows Anthropic's writing-tools-for-agents guidance: we do NOT mirror all 94 REST endpoints. We consolidate the REST surface to 64 workflow tools using three moves: (1) fold list+detail into one tool with an id/ticker param that switches to single-record mode; (2) fold sibling endpoints behind a `view` enum (e.g. hip3 auctions live|current|history, evm stats current|daily); (3) fold recent/all and perp/spot scopes into one search tool with a scope flag. The /spot REST endpoints, broken upstream (500) at design time, shipped anyway folded into hd_fills_search as scope=spot; upstream fixed them on 2026-07-06 and they now return data (live-verified). (The fills_spot push channel was later refused upstream; see the 2026-10-21 audit.) On top of the 64 Data-API REST tools, three groups extend coverage to the rest of the HypeDexer surface: `streams` (the indexed WS: 1 tool since 2026-10-21, liquidations), `live` (9 tools, the Live mirror WS channels: order books, mids, fills, candles, contexts, per-user feeds), and `rpc` (6 tools, the HyperEVM JSON-RPC product over HTTP + an eth_subscribe snapshot), and the permissionless HIP-4 attribution surface (`hd_hip4_providers`, `hd_hip4_deployers`, shipped 2026-08-29 the day the upgrade landed), and `elysium` (8 tools over the 22 Elysium testnet routes, added 2026-09-30), then the `exchange` and `account` groups (typed POST /info and /market history, added 2026-10-21). 98 tools total.
 
 Tool groups are registered through a registry keyed by group name and filtered by the HYPEDEXER_MCP_TOOLS gate before McpServer.registerTool is ever called, so ungated groups cost zero definition tokens. The free `public` group is always registered (works keyless); key-gated groups self-skip with a one-line log if HYPEDEXER_API_KEY is absent, so a no-key install still boots and smoke-tests end-to-end.
 
@@ -60,8 +62,10 @@ Every tool returns BOTH a machine payload and a concise text summary: { content:
 | public | always on (keyless); part of presets all|core|public | 8 |
 | fills | all|core | 2 |
 | markets | all|core | 3 |
+| exchange | all|core | 5 |
+| account | all|core | 2 |
 | analytics | all|core | 3 |
-| traders | all|core | 6 |
+| traders | all|core | 7 |
 | liquidations | all|core | 1 |
 | funding | all|core | 3 |
 | vaults | all|core | 4 |
@@ -70,6 +74,10 @@ Every tool returns BOTH a machine payload and a concise text summary: { content:
 | builders | all only | 3 |
 | twaps | all only | 3 |
 | evm | all only | 8 |
+| elysium | all only | 8 |
+| streams | all only | 1 |
+| live | all only | 9 |
+| rpc | opt-in only (endpoint not deployed) | 6 |
 | info | opt-in only (never in a preset; must be named explicitly) | 1 |
 
 ## File layout
@@ -107,8 +115,10 @@ src/tools/shared/errors.ts                toToolError(e): map HypedexerError sub
 src/tools/public.ts                       GROUP public: 8 hl_public_* tools over HyperliquidPublicClient (keyless)
 src/tools/fills.ts                        GROUP fills: hd_fills_search, hd_fills_count
 src/tools/markets.ts                      GROUP markets: hd_market_snapshot_24h, hd_market_daily_series, hd_user_coin_distribution
+src/tools/exchange.ts                     GROUP exchange: hd_candles, hd_exchange_info, hd_order_book, hd_market_history, hd_spot_meta
+src/tools/account.ts                      GROUP account: hd_account_state, hd_account_history
 src/tools/analytics.ts                    GROUP analytics: hd_analytics_fills_stats, hd_analytics_priority_fees, hd_analytics_liquidations_stats
-src/tools/traders.ts                      GROUP traders: hd_user_profile, hd_user_coins, hd_traders_leaderboard, hd_traders_active, hd_completed_trades_search, hd_completed_trade_fills
+src/tools/traders.ts                      GROUP traders: hd_user_profile, hd_users_batch_performance, hd_user_coins, hd_traders_leaderboard, hd_traders_active, hd_completed_trades_search, hd_completed_trade_fills
 src/tools/liquidations.ts                 GROUP liquidations: hd_liquidations_search
 src/tools/hip3.ts                         GROUP hip3: 11 tools (overview,dexs,assets,auctions,snapshots,ohlcv,oracle_stats,fills,traders,user,gossip)
 src/tools/hip4.ts                         GROUP hip4: 8 tools (markets,questions,outcome_tokens,fills,fees,settlements,analytics,preview)
@@ -138,7 +148,7 @@ scripts/inspector-smoke.sh                npx @modelcontextprotocol/inspector --
 - devDep @types/node (22.x) — node:http, process, AbortController types.
 - devDep @biomejs/biome (1.9.x) — lint/format, reuse repo config.
 - devDep @modelcontextprotocol/inspector (latest) — CLI smoke (npx --cli) in scripts/inspector-smoke.sh and CI; not a runtime dep.
-- NO undici/node-fetch — Node >=20 has global fetch, which the vendored HttpClient already uses. NO express — node:http is enough for the streamable HTTP transport. NO `ws` — the 5 WebSocket channels ship via the **native global `WebSocket`** (Node >=22, which transmits the `X-API-Key` upgrade header) wrapped as bounded-window snapshot tools (`src/hypedexer/ws-client.ts` + the `streams` group), so MCP's request/response model is preserved without adding a dependency.
+- NO undici/node-fetch: Node >=20 has global fetch, which the vendored HttpClient already uses. NO express: node:http is enough for the streamable HTTP transport. NO `ws`: the WebSocket channels ship via the **native global `WebSocket`** (Node >=22, which transmits the `X-API-Key` upgrade header) wrapped as bounded-window snapshot tools (`src/hypedexer/ws-client.ts` + the `streams` group), so MCP's request/response model is preserved without adding a dependency.
 
 ## Testing strategy
 
@@ -167,7 +177,7 @@ Published as @hypedexer/mcp with bin { "hypedexer-mcp": "dist/index.js" } (tsup 
 
 - MCP TS SDK version was provided as null — pin the exact @modelcontextprotocol/sdk 1.x at build time and confirm registerTool's outputSchema/structuredContent support and the StreamableHTTPServerTransport API match this design (zod v3 assumed).
 - Default gate preset: this spec defaults HYPEDEXER_MCP_TOOLS=core (public+fills+markets+analytics+traders+liquidations+funding+vaults ≈ 30 tools) to keep definition-token cost low; confirm product wants 'core' vs 'all' (64 tools) as the out-of-box default.
-- RESOLVED: the 5 WebSocket channels now ship as the `streams` group (`hd_stream_*`), each a bounded-window snapshot (subscribe, drain for `seconds`/`max_items`, close) over the native global WebSocket — completed_trades (user-scopable), fills_spot, recent_activity, liquidation, hip4_events. A persistent/resource-based streaming surface remains a possible future addition.
+- RESOLVED: the 5 WebSocket channels now ship as the `streams` group (`hd_stream_*`), each a bounded-window snapshot (subscribe, drain for `seconds`/`max_items`, close) over the native global WebSocket: completed_trades (user-scopable), fills_spot, recent_activity, liquidation, hip4_events. A persistent/resource-based streaming surface remains a possible future addition. UPDATE 2026-10-21: the server now serves only `liquidations` (plural) on the indexed endpoint and refuses the four others and the singular name, so `streams` is down to hd_stream_liquidations (with user/users/amount_dollars/builder filters).
 - RESOLVED upstream 2026-07-06: the /spot REST endpoints (500 ClickHouse leak at design time) now return data, served through `hd_fills_search` scope=spot (offset-paginated); `hd_stream_fills_spot` remains the push source and `hl_public_spot_meta` the metadata source.
 - userFunding and userVaultEquities returned empty for every tested user, so their row shapes are unverified — design returns them with meta.unverified=true. Confirm whether to ship them in v1 or hold until a non-empty sample exists.
 - Hosted HTTP auth model: should mcp.hypedexer.com accept the end-user's HYPEDEXER_API_KEY per-session (forwarded as X-API-Key) or use a server-side key with its own tenant auth? This design assumes env-provided key per process; multi-tenant hosting needs a per-request key story.
@@ -175,7 +185,7 @@ Published as @hypedexer/mcp with bin { "hypedexer-mcp": "dist/index.js" } (tsup 
 
 ---
 
-## Tool catalog (93 tools)
+## Tool catalog (98 tools)
 
 ### `hl_public_all_mids`  (public, read-only)
 
@@ -302,15 +312,18 @@ Unified perp/spot fills feed. scope=recent (24h cached, fast) or all; optional u
 
 ### `hd_fills_count`  (fills, read-only)
 
-Aggregate fill count for the current window. data is an object (not array); execution_time_ms is null upstream.
+Fill count without the rows. Since 2026-10-21 a coin/side/window count reads the X-Total-Count header of POST /info type=fills (limit 1), because GET /fills/count ignores coin and time filters live and always returns the global total. Perp counts without a window start at startTime 0 (the API answers 400 for a market-wide perp query without a time filter); spot without a window counts all history.
 
-- **Backing:** GET /fills/count
+- **Backing:** POST /info type=fills (X-Total-Count); GET /fills/count only for the unfiltered global total
 - **Pagination:** none
 - **Tier:** core
 - **Inputs:**
+  - `scope`: enum perp|spot: default perp
   - `coin` — string
-- **Output:** count object structured
-- **Quirks to normalize:** object data; null exec time dropped
+  - `side`: enum B|A (count trades with side=B)
+  - `start_time` / `end_time`: string, or `time_range` 1h|24h|7d|30d
+- **Output:** {count, scope, filters}
+- **Quirks to normalize:** hip3 X-Total-Count only echoes the page, so hip3 is not offered
 
 ### `hd_market_snapshot_24h`  (markets, read-only)
 
@@ -1121,6 +1134,82 @@ HIP-3 backstop on HyperEVM: view=transfers, transfers_summary, health (6 active 
 - **Output:** per-view structured + handle
 - **Quirks to normalize:** dex_fills empty-on-unknown noted; transfers often empty
 
+### `hd_candles`  (exchange, read-only)
+
+Candles from HypeDexer POST /info candleSnapshot with an in-process summary (base_volume, trades, open/close/high/low, est_quote_volume = sum of v*(h+l+c)/3, an estimate). The one-call answer to per-coin totals over any window, including all-time (start_time omitted = startTime 0).
+
+- **Backing:** POST /info type=candleSnapshot
+- **Pagination:** none; at most 5000 candles counted from start_time (a note says how to continue)
+- **Tier:** core
+- **Inputs:**
+  - `coin` (required): perp, spot `@N` or HIP-3 `dex:TICKER`, case kept
+  - `interval`: 5s|30s|1m|5m|15m|30m|1h|4h|1d, default 1d (others answer 400 upstream)
+  - `start_time` / `end_time`
+  - `include_candles`: false returns only the summary
+- **Output:** candles (or summary) + meta.summary
+- **Quirks to normalize:** candles carry no quote volume, hence the labelled estimate
+
+### `hd_exchange_info`  (exchange, read-only)
+
+Exchange reference data and state over POST /info, one view per type: data_coverage, asset_context (coin), all_mids (dex), perp_dexs, all_perp_metas, perp_meta (dex), perp_dex_limits / perp_dex_status (dex required), perps_at_oi_cap (dex), perp_deploy_auction, spot_pair_deploy_auction, exchange_status, liquidatable, max_market_order_notionals, borrow_lend_reserves, borrow_lend_history (token, interval, window, limit), validator_l1_votes.
+
+- **Backing:** POST /info (types above)
+- **Pagination:** none
+- **Tier:** core
+- **Output:** raw upstream payload through rawResult (budget-clipped)
+- **Quirks to normalize:** asset_context unwraps `{result}`; the documented `assetContext` alias answers 400, so `metaAndAssetCtxs` is used
+
+### `hd_order_book`  (exchange, read-only)
+
+Live book state over POST /info: l2 (l2Book), depth (currentDepth), liquidity (marketLiquidity, coin or up to 20 coins), diffs (l2BookDiffSnapshot, last ~3h, limit up to 5000), trades (trades).
+
+- **Backing:** POST /info
+- **Pagination:** none
+- **Tier:** core
+- **Quirks to normalize:** `{result}` unwrapped; depth bands come from the top-20 L2 levels and can be identical
+
+### `hd_market_history`  (exchange, read-only)
+
+GET /market/*: coins (kind), bbo, spread, depth, slippage (size_usd), liquidity_report (period), book (at, levels, source). Archive April 2024 to February 2026; book-based views also since 2026-09-23 (node full book); no book data 2026-02-10 to 2026-09-23. Window caps 1m 7d, 1h 180d, 1d 730d.
+
+- **Backing:** GET /market/coins, /market/{bbo|spread|depth|slippage|book|liquidity-report}/{coin}
+- **Pagination:** none
+- **Tier:** core
+
+### `hd_spot_meta`  (exchange, read-only)
+
+resolve (an `@N` handle, pair name or token name to pair + base/quote token metadata, computed from live spotMeta), pairs (GET /spot/pairs, may be partial), tokens (GET /spot/tokens, search, limit 1-500), auctions_live, auctions_history.
+
+- **Backing:** POST /info spotMeta; GET /spot/pairs, /spot/tokens, /spot/auctions/live, /spot/auctions/hist
+- **Pagination:** offset on tokens and auctions_history
+- **Tier:** core
+
+### `hd_account_state`  (account, read-only)
+
+One wallet's live state through the proxied POST /info types: clearinghouse (user or users[], dex), spot_balances, open_orders / frontend_open_orders (dex), sub_accounts, fees, rate_limit, role, approved_builders, max_builder_fee (builder), extra_agents, multisig_signers, abstraction, dex_abstraction (dex), borrow_lend, delegator_summary, delegations, active_asset (coin), vault_equities, web_data.
+
+- **Backing:** POST /info (proxied Hyperliquid types)
+- **Pagination:** none
+- **Tier:** core
+- **Quirks to normalize:** shapes differ from the doc (abstraction is a string, dex_abstraction a boolean, extra_agents objects)
+
+### `hd_account_history`  (account, read-only)
+
+orders (historicalOrders: default mode `limit` most recent, window mode paged by the X-Has-More / X-Next-Cursor response headers), order_status (oid), ledger (userNonFundingLedgerUpdates), twap_slice_fills (userTwapSliceFills, twap_id).
+
+- **Backing:** POST /info
+- **Pagination:** cursor from headers (orders); settlement-safe time window (ledger, twap slices)
+- **Tier:** core
+- **Quirks to normalize:** headers carry the paging state, so the client exposes `postWithHeaders`
+
+### `hd_users_batch_performance`  (traders, read-only)
+
+POST /users/batch/performance: hd_user_profile performance fields for up to 500 wallets, window 7d|30d|90d|all, include_drawdown. 3 credits per wallet.
+
+### `hd_live_feed`  (live, read-only)
+
+Bounded snapshot of the mirror channels candle / allCandles (interval), activeAssetCtx (coin), fundingRates, setOracleUpdates, allTwapStatusUpdates, orderUpdates / userEvents / userFundings / userNonFundingLedgerUpdates (user).
+
 ### `hd_info_raw`  (info, read-only)
 
 Escape hatch: call the HypeDexer POST /info discriminated dispatcher directly with a type + params, for any /info type not covered by a dedicated tool. Returns the same envelope as the backing REST handler (currentFundingRates and vaultList are auto-unwrapped). Prefer the dedicated tools; this is for advanced/forward-compat use.
@@ -1134,6 +1223,17 @@ Escape hatch: call the HypeDexer POST /info discriminated dispatcher directly wi
 - **Output:** normalized envelope structured
 - **Quirks to normalize:** 400 {error} and 422 {detail} mapped; two wrap-mismatch types unwrapped
 
+
+### 2026-10-21 audit: changes to existing tools
+
+All live-verified on 2026-10-21 before wiring; see CHANGELOG.md for the full list.
+
+- HIP-3 fills, ohlcv, oracle stats and user fills: windows sent as `start`/`end` (the API ignores `start_time`/`end_time` there); ohlcv and oracle stats page by moving the window (offset ignored). New filters on assets, auctions, snapshots (per-coin all-time totals), fills, leaderboard, trader stats, user fills, gossip history.
+- HIP-4 fills, fees, settlements: windows sent as epoch ms (bare dates truncated intra-day windows); hd_hip4_analytics sends no window/cursor/offset (500 or ignored upstream). New filters on markets, questions, outcome tokens, fees, settlements.
+- hd_user_funding: a full page holds back its oldest settlement and points next_end_time at it, so a settlement split across pages is not skipped.
+- Fake offset paging removed where the API ignores offset (traders active, user coins, vaults list, builder users, hip3 ohlcv/oracle).
+- hd_user_profile views account/equity_history/pnl_calendar/top_trades + window; leaderboard window mode; completed trades user/direction/pnl bounds/sort_dir; fills side/size_usd/order/has_priority_gas/coins/time_range; HyperEVM and backstop filters; builder external activity.
+- WebSockets: hd_stream_liquidations subscribes `liquidations`; four refused stream tools removed; bbo and trades descriptions no longer claim they are silent/rejected.
 
 ---
 

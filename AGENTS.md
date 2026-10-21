@@ -35,7 +35,7 @@ Run **all four** before proposing any change. `prepublishOnly` runs the same seq
 ```bash
 pnpm lint           # biome check src test
 pnpm typecheck      # tsc --noEmit, strict + exactOptionalPropertyTypes + noUncheckedIndexedAccess
-pnpm test           # vitest, 84 tests (3 live tests skip without HYPEDEXER_MCP_LIVE=1)
+pnpm test           # vitest, 184 tests (3 live tests skip without HYPEDEXER_MCP_LIVE=1)
 pnpm build          # tsup -> dist/index.js
 ```
 
@@ -79,7 +79,7 @@ Adding or removing a tool touches **all** of these; missing one is the classic r
 
 1. The module file itself, and `src/tools/index.ts` (barrel) if the group is new.
 2. `src/config.ts` if the group is new (and decide preset membership; `OPT_IN_ONLY` holds `info` and `rpc`).
-3. **Tool counters** in `test/tools.client.test.ts` (93 total with `all,info,rpc`; 8 keyless) and `test/config.test.ts`.
+3. **Tool counters** in `test/tools.client.test.ts` (98 total with `all,info,rpc`; 8 keyless) and `test/config.test.ts`.
 4. `scripts/smoke-desktop.mjs` expectations.
 5. README tool catalog, `DESIGN.md` counters, `CHANGELOG.md`.
 
@@ -98,8 +98,12 @@ Check this table before "fixing" something that is actually an upstream limitati
 | Upstream | Posture here |
 |---|---|
 | `rpc.hypedexer.com` does not resolve (NXDOMAIN) | `rpc` group is opt-in only, excluded from `all` |
-| Mirror WS `bbo`: subscription accepted, zero frames | Tool descriptions steer to `l2Book` (top level = best bid/offer) |
-| Mirror WS `trades`: rejected, "Unsupported subscription" | Steer to `hd_stream_completed_trades` |
+| Mirror WS `bbo` and `trades` | Both stream since at least 2026-10-21 (the 2026-07-01 gaps are gone) |
+| Indexed WS: only `liquidations` (plural) is served; `completed_trades`, `fills_spot`, `recent_activity`, `hip4_events`, singular `liquidation` are refused (2026-10-21) | One stream tool left, `hd_stream_liquidations` |
+| Mirror WS `l4BookUpdates`: acknowledged, no data frame (2026-10-21) | Description steers to `hd_order_book view=diffs` |
+| `GET /fills/count` ignores coin/time | `hd_fills_count` reads `X-Total-Count` of `POST /info type=fills` |
+| HIP-3 fills/ohlcv/oracle/user fills ignore `start_time`/`end_time` | Send `start`/`end` |
+| `/hip4/analytics` 500s on any start/end/cursor | Never sent |
 | Mirror WS `l4Book`: snapshot can exceed the native WS decompression limit | Steer to `l2Book` |
 | Mirror hub rate-limits rapid reconnects | Space live WS calls a few seconds apart, including in tests |
 | Mirror ack frame `subscriptionResponse` shares the data envelope | Filtered in the collector; keep the filter |
