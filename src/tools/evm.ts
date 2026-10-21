@@ -6,6 +6,7 @@ import { buildResult, rawResult } from './shared/output.js'
 import { buildTimeQuery, offsetPagination } from './shared/pagination.js'
 import {
   addressSchema,
+  coinSchema,
   endTimeSchema,
   limitSchema,
   offsetSchema,
@@ -193,10 +194,17 @@ export const evmTools: ToolModule = [
     title: 'HyperEVM transactions',
     description:
       'The HyperEVM transaction feed (one row per indexed tx: block_time, block_number, tx_index, tx_type, ' +
-      'to_addr, value_wei, gas, success, etc.). Optionally bound by a time window (start_time/end_time, ISO-8601). ' +
+      'to_addr, value_wei, gas, success, etc.). Filter by block_number, to_addr and include_system (default true: ' +
+      'system transactions included), and/or a time window (start_time/end_time, ISO-8601). ' +
       'Offset-paginated: page with offset=pagination.next_offset while pagination.has_more is true. Cap: limit up ' +
       "to 1000. To list one block's transactions instead, use hd_evm_blocks with block_number + transactions=true.",
     inputSchema: {
+      block_number: z.number().int().min(0).optional().describe('Only this block.'),
+      to_addr: addressSchema.optional().describe('Only transactions sent to this address.'),
+      include_system: z
+        .boolean()
+        .optional()
+        .describe('false = drop system transactions (default true).'),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
       limit: limitSchema(EVM_LIMIT_CAP),
@@ -205,6 +213,9 @@ export const evmTools: ToolModule = [
     async handler(args, ctx) {
       const hd = requireHd(ctx)
       let query: Query = { limit: args.limit, offset: args.offset }
+      if (args.block_number !== undefined) query.block_number = args.block_number
+      if (args.to_addr !== undefined) query.to_addr = args.to_addr
+      if (args.include_system !== undefined) query.include_system = args.include_system
       query = buildTimeQuery(query, {
         start: args.start_time,
         end: args.end_time,
@@ -235,9 +246,18 @@ export const evmTools: ToolModule = [
     title: 'HyperEVM event logs',
     description:
       'The HyperEVM event-log feed (one row per emitted log: block_time, block_number, tx_index, log_index, ' +
-      'contract address, topic0-topic3, data). Optionally bound by a time window (start_time/end_time, ISO-8601). ' +
+      'contract address, topic0-topic3, data). Filter by block_number, contract `address` and `topic0` (event ' +
+      'signature hash), and/or a time window (start_time/end_time, ISO-8601). ' +
       'Offset-paginated: page with offset=pagination.next_offset while pagination.has_more is true. Cap: limit up to 1000.',
     inputSchema: {
+      block_number: z.number().int().min(0).optional().describe('Only this block.'),
+      address: addressSchema.optional().describe('Only logs emitted by this contract.'),
+      topic0: z
+        .string()
+        .trim()
+        .regex(/^0x[0-9a-fA-F]{64}$/, 'must be a 0x-prefixed 32-byte hash')
+        .optional()
+        .describe('Only this event signature (topic0), e.g. the ERC-20 Transfer/Approval hash.'),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
       limit: limitSchema(EVM_LIMIT_CAP),
@@ -246,6 +266,9 @@ export const evmTools: ToolModule = [
     async handler(args, ctx) {
       const hd = requireHd(ctx)
       let query: Query = { limit: args.limit, offset: args.offset }
+      if (args.block_number !== undefined) query.block_number = args.block_number
+      if (args.address !== undefined) query.address = args.address
+      if (args.topic0 !== undefined) query.topic0 = args.topic0
       query = buildTimeQuery(query, {
         start: args.start_time,
         end: args.end_time,
@@ -275,10 +298,31 @@ export const evmTools: ToolModule = [
     title: 'HyperEVM ledger transfers',
     description:
       'The L1<->EVM ledger transfer stream (one row per ledger action: time, action_type, user_from, user_to, ' +
-      'token, amount / amount_raw, source/destination dex). Optionally bound by a time window (start_time/end_time, ' +
+      'token, amount / amount_raw, source/destination dex, populated for agentSendAsset). Filter by `user` (sender ' +
+      'or receiver), `action_type`, `token` (partial match, e.g. "HFUN"), and/or a time window (start_time/end_time, ' +
       'ISO-8601). Offset-paginated: page with offset=pagination.next_offset while pagination.has_more is true. Cap: ' +
       'limit up to 1000.',
     inputSchema: {
+      user: addressSchema.optional().describe('Only transfers from or to this address.'),
+      action_type: z
+        .enum([
+          'withdraw3',
+          'usdSend',
+          'spotSend',
+          'sendAsset',
+          'agentSendAsset',
+          'usdClassTransfer',
+          'subAccountTransfer',
+          'vaultTransfer',
+        ])
+        .optional()
+        .describe('Only this L1 action type.'),
+      token: z
+        .string()
+        .trim()
+        .min(1)
+        .optional()
+        .describe('Token filter, partial match (e.g. "HFUN").'),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
       limit: limitSchema(EVM_LIMIT_CAP),
@@ -287,6 +331,9 @@ export const evmTools: ToolModule = [
     async handler(args, ctx) {
       const hd = requireHd(ctx)
       let query: Query = { limit: args.limit, offset: args.offset }
+      if (args.user !== undefined) query.user = args.user
+      if (args.action_type !== undefined) query.action_type = args.action_type
+      if (args.token !== undefined) query.token = args.token
       query = buildTimeQuery(query, {
         start: args.start_time,
         end: args.end_time,
@@ -301,10 +348,7 @@ export const evmTools: ToolModule = [
           data: page.data,
           pagination: offsetPagination(page, args.offset, args.limit),
           meta: listMeta(page, path),
-          notes: [
-            'Data quirk: `block_height` is always 0 (placeholder/unused).',
-            'If you filter by action_type, an unrecognized value silently returns an empty list (200), not an error.',
-          ],
+          notes: ['Data quirk: `block_height` is always 0 (placeholder/unused).'],
         },
         { summary: 'HyperEVM ledger transfers.', maxTokens: ctx.config.maxResponseTokens },
       )
@@ -317,9 +361,17 @@ export const evmTools: ToolModule = [
     title: 'HyperEVM bridge events',
     description:
       'The HyperEVM bridge event stream (one row per bridge action: time, event_type, user_addr, validator, amount, ' +
-      'destination, nonce, raw). Optionally bound by a time window (start_time/end_time, ISO-8601). Offset-paginated: ' +
+      'destination, nonce, raw). Filter by user_addr, event_type (deposit_vote | withdrawal_finalized | ' +
+      'withdrawal_sign | withdraw3), and/or a time window (start_time/end_time, ISO-8601). Offset-paginated: ' +
       'page with offset=pagination.next_offset while pagination.has_more is true. Cap: limit up to 1000.',
     inputSchema: {
+      user_addr: addressSchema.optional().describe('Only events of this user.'),
+      event_type: z
+        .enum(['deposit_vote', 'withdrawal_finalized', 'withdrawal_sign', 'withdraw3'])
+        .optional()
+        .describe(
+          'Only this bridge event type (the upstream does not validate it, so it is enum-guarded here).',
+        ),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
       limit: limitSchema(EVM_LIMIT_CAP),
@@ -328,6 +380,9 @@ export const evmTools: ToolModule = [
     async handler(args, ctx) {
       const hd = requireHd(ctx)
       let query: Query = { limit: args.limit, offset: args.offset }
+      if (args.user_addr !== undefined) query.user_addr = args.user_addr
+      if (args.event_type !== undefined)
+        query.event_type = Array.isArray(args.event_type) ? args.event_type : [args.event_type]
       query = buildTimeQuery(query, {
         start: args.start_time,
         end: args.end_time,
@@ -343,7 +398,6 @@ export const evmTools: ToolModule = [
           pagination: offsetPagination(page, args.offset, args.limit),
           meta: listMeta(page, path),
           notes: [
-            'If you filter by event_type, an unrecognized value silently returns an empty list (200), not an error.',
             '`nonce` is a large integer near the JS safe-integer edge; treat it as opaque if you need exactness.',
           ],
         },
@@ -359,11 +413,10 @@ export const evmTools: ToolModule = [
     description:
       'One trader\'s HyperEVM ledger, selected by `view`. view="ledger_events" (default) returns the per-user ' +
       'ledger event stream (incoming + outgoing, with counterparty, token, amount, tx_hash) - offset-paginated ' +
-      '(page with offset=pagination.next_offset) and filterable by a single `event_type` and/or a time window ' +
+      '(page with offset=pagination.next_offset) and filterable by one or several `event_type` values and/or a time window ' +
       '(start_time/end_time, ISO-8601). view="ledger_summary" returns aggregates per action type ' +
       '(count, total_amount, tokens[]) in one call (not paginated; handy for token discovery). REQUIRES `address`. ' +
-      'Cap: limit up to 1000. The endpoint also accepts several event_type values at once upstream; this tool ' +
-      'filters by one, so call once per type and merge if you need a union.',
+      'Cap: limit up to 1000.',
     inputSchema: {
       address: addressSchema,
       view: viewSchema(
@@ -372,10 +425,10 @@ export const evmTools: ToolModule = [
         'ledger_events',
       ),
       event_type: z
-        .enum(LEDGER_EVENT_TYPES)
+        .union([z.enum(LEDGER_EVENT_TYPES), z.array(z.enum(LEDGER_EVENT_TYPES)).min(1)])
         .optional()
         .describe(
-          'ledger_events only: restrict to one event type. Strictly validated upstream (an invalid value 422s).',
+          'ledger_events only: one event type or a list (union). Strictly validated upstream (an invalid value 422s).',
         ),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
@@ -432,9 +485,10 @@ export const evmTools: ToolModule = [
       '"health" -> backstop health across all active dexes (one call; only dexes with observed backstop fills ' +
       'appear, a subset of all dexes). "dex_health" -> health for one dex (single object; REQUIRES `dex`). ' +
       '"dex_fills" -> the simplified backstop fill feed for one dex (offset-paginated; REQUIRES `dex`). Cap: limit ' +
-      'up to 1000. Note: the transfers / transfers_summary tables are typically empty in current data (no backstop ' +
-      'deposits recorded yet). Unknown-dex behavior is inconsistent: dex_fills returns 200 with an empty list, ' +
-      'whereas dex_health 404s.',
+      'up to 1000. Filters: transfers take dex, signer and is_deposit (true deposits, false withdrawals); ' +
+      'transfers_summary takes dex and a time window; dex_fills takes coin and side (B|A). Principal flows are ' +
+      'recorded (live 2026-10-21: xyz net principal about 2.18M USDC). Unknown-dex behavior is inconsistent: ' +
+      'dex_fills returns 200 with an empty list, whereas dex_health 404s.',
     inputSchema: {
       view: viewSchema(
         ['transfers', 'transfers_summary', 'health', 'dex_health', 'dex_fills'],
@@ -449,6 +503,13 @@ export const evmTools: ToolModule = [
         .describe(
           'Dex id (e.g. "km", "hyna", "flx"). Required for view="dex_health" or "dex_fills"; see view="health" for active dexes.',
         ),
+      signer: addressSchema.optional().describe('view="transfers": only this signer.'),
+      is_deposit: z
+        .boolean()
+        .optional()
+        .describe('view="transfers": true = deposits only, false = withdrawals only.'),
+      coin: coinSchema.optional().describe('view="dex_fills": one prefixed coin, e.g. "km:US500".'),
+      side: z.enum(['B', 'A']).optional().describe('view="dex_fills": B = buy, A = sell.'),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
       limit: limitSchema(EVM_LIMIT_CAP),
@@ -459,6 +520,9 @@ export const evmTools: ToolModule = [
 
       if (args.view === 'transfers') {
         let query: Query = { limit: args.limit, offset: args.offset }
+        if (args.dex !== undefined) query.dex = args.dex
+        if (args.signer !== undefined) query.signer = args.signer
+        if (args.is_deposit !== undefined) query.is_deposit = args.is_deposit
         query = buildTimeQuery(query, {
           start: args.start_time,
           end: args.end_time,
@@ -473,25 +537,25 @@ export const evmTools: ToolModule = [
             data: page.data,
             pagination: offsetPagination(page, args.offset, args.limit),
             meta: listMeta(page, path),
-            notes: [
-              'Backstop transfers are typically empty in current data (no deposits recorded yet); an empty list is expected, not an error.',
-            ],
           },
           { summary: 'HIP-3 backstop transfers.', maxTokens: ctx.config.maxResponseTokens },
         )
       }
 
       if (args.view === 'transfers_summary') {
+        let query: Query = {}
+        if (args.dex !== undefined) query.dex = args.dex
+        query = buildTimeQuery(query, {
+          start: args.start_time,
+          end: args.end_time,
+          target: 'isoSnake',
+          startKey: 'start_time',
+          endKey: 'end_time',
+        })
         const path = '/evm/hip3/backstop/transfers-summary'
-        const page = await hd.getApiList(path)
+        const page = await hd.getApiList(path, query)
         return buildResult(
-          {
-            data: page.data,
-            meta: listMeta(page, path),
-            notes: [
-              'Backstop transfer summaries are typically empty in current data; an empty list is expected, not an error.',
-            ],
-          },
+          { data: page.data, meta: listMeta(page, path) },
           { summary: 'HIP-3 backstop transfer summary.', maxTokens: ctx.config.maxResponseTokens },
         )
       }
@@ -536,6 +600,8 @@ export const evmTools: ToolModule = [
         )
       }
       let query: Query = { limit: args.limit, offset: args.offset }
+      if (args.coin !== undefined) query.coin = args.coin
+      if (args.side !== undefined) query.side = args.side
       query = buildTimeQuery(query, {
         start: args.start_time,
         end: args.end_time,
