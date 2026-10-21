@@ -196,3 +196,18 @@ describe('elysium tools (real module, mocked fetch)', () => {
     expect(br.seen[0]?.searchParams.get('direction')).toBe('deposit')
   })
 })
+
+describe('hd_elysium_tokens search cap', () => {
+  it('rejects a search longer than the upstream 64 characters', async () => {
+    const { elysiumTools } = await import('../src/tools/elysium.js')
+    const { run } = await import('./harness.js')
+    const { res, calls } = await run(
+      elysiumTools,
+      'hd_elysium_tokens',
+      { search: 'a'.repeat(65) },
+      [],
+    )
+    expect(res.isError).toBe(true)
+    expect(calls).toHaveLength(0)
+  })
+})

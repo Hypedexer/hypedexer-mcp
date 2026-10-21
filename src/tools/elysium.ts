@@ -482,9 +482,9 @@ export const elysiumTools: ToolModule = [
         .string()
         .trim()
         .min(1)
-        .max(100)
+        .max(64)
         .optional()
-        .describe('List only: name, symbol or address.'),
+        .describe('List only: name, symbol or address (max 64 characters).'),
       holder: addressSchema
         .optional()
         .describe('view=transfers only: transfers involving this address.'),

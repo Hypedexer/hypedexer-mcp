@@ -130,3 +130,13 @@ describe('twaps, vaults and liquidations params', () => {
     expect(calls[0]?.url.searchParams.get('limit')).toBe('1000')
   })
 })
+
+describe('no fake paging on hd_vaults_list', () => {
+  it('sends no offset and returns no pagination handle', async () => {
+    const { calls, sc } = await run(vaultsTools, 'hd_vaults_list', { limit: 2, offset: 2 }, [
+      { match: '/vaults/vaultSummaries', json: [{ vaultAddress: A }, { vaultAddress: B }] },
+    ])
+    expect(calls[0]?.url.searchParams.has('offset')).toBe(false)
+    expect(sc.pagination).toBeUndefined()
+  })
+})

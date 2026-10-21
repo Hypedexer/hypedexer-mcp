@@ -1,12 +1,11 @@
 import type { Query } from '../hypedexer/client.js'
 import { requireHd } from './context.js'
 import { buildResult, rawResult } from './shared/output.js'
-import { buildTimeQuery, offsetPagination, timeWindowPagination } from './shared/pagination.js'
+import { buildTimeQuery, timeWindowPagination } from './shared/pagination.js'
 import {
   addressSchema,
   endTimeSchema,
   limitSchema,
-  offsetSchema,
   startTimeSchema,
   viewSchema,
   z,
@@ -17,7 +16,7 @@ import { type ToolModule, defineTool } from './types.js'
  * Hyperliquid vault discovery + history (HypeDexer Data API, bare envelope).
  *
  * Covers the six `/vaults/*` REST endpoints:
- *   - vaultSummaries  -> hd_vaults_list          (offset-paginated leaderboard)
+ *   - vaultSummaries  -> hd_vaults_list          (one page, top `limit` by followers)
  *   - vaultDetails    -> hd_vault_details         (single record + commission history)
  *   - daily/equity/ledger snapshots -> hd_vault_snapshots (time-window history)
  *   - userVaultEquities -> hd_user_vault_equities (a depositor's per-vault equity)
@@ -42,30 +41,28 @@ export const vaultsTools: ToolModule = [
       'Browse the Hyperliquid vault directory (the "vaultSummaries" leaderboard), one row per vault with ' +
       'vaultAddress, name, leader, leaderCommission, isClosed, followerCount, snapshotTime and createTime. ' +
       'Rows come pre-sorted by followerCount descending, so the first page is the most-followed vaults. ' +
-      'Closed vaults are excluded by default; set include_closed=true to include them. Offset-paginated: ' +
-      'page with offset=pagination.next_offset (cap 5000). Use this to find a vaultAddress to feed into ' +
-      'hd_vault_details or hd_vault_snapshots.',
+      'Closed vaults are excluded by default; set include_closed=true to include them. One page of up to ' +
+      '5000 rows: the endpoint ignores an offset (live 2026-10-21), so raise `limit` to see further down the ' +
+      'list. Use this to find a vaultAddress to feed into hd_vault_details or hd_vault_snapshots.',
     inputSchema: {
       include_closed: z
         .boolean()
         .optional()
         .describe('Include closed/wound-down vaults. Omit (default) to list only open vaults.'),
       limit: limitSchema(5000),
-      offset: offsetSchema,
     },
     async handler(args, ctx) {
       const hd = requireHd(ctx)
-      const query: Query = { limit: args.limit, offset: args.offset }
+      const query: Query = { limit: args.limit }
       if (args.include_closed !== undefined) query.includeClosed = args.include_closed
 
       const page = await hd.getBareList<unknown>('/vaults/vaultSummaries', query)
-      const pagination = offsetPagination(page, args.offset, args.limit)
 
       const meta: Record<string, unknown> = { source: '/vaults/vaultSummaries' }
       if (page.meta.executionMs != null) meta.execution_ms = page.meta.executionMs
 
       return buildResult(
-        { data: page.data, pagination, meta },
+        { data: page.data, meta },
         {
           summary: `Hyperliquid vaults${args.include_closed ? ' (incl. closed)' : ''}, by follower count.`,
           maxTokens: ctx.config.maxResponseTokens,
