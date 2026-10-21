@@ -1,3 +1,4 @@
+import { encodeTime } from '../core/time.js'
 import type { Query } from '../hypedexer/client.js'
 import { sanitizeTotalCount } from '../hypedexer/quirks.js'
 import { requireHd } from './context.js'
@@ -20,15 +21,21 @@ import { type ToolModule, defineTool } from './types.js'
  *
  * Consolidates five endpoints into one search tool via a `scope` (perp|spot) and
  * an optional `address`:
- *   perp,  no addr, recent=false -> GET /fills/
- *   perp,  no addr, recent=true  -> GET /fills/recent       (24h cache, faster)
- *   perp,  address               -> GET /fills/user/{address}
+ *   perp,  no addr, recent=false -> GET /fills/              (spot + perp)
+ *   perp,  no addr, recent=true  -> GET /fills/recent        (24h live table, faster)
+ *   perp,  address               -> GET /fills/user/{address} (spot + perp)
  *   spot,  no addr               -> GET /fills/spot/
  *   spot,  address               -> GET /fills/spot/user/{address}
  *
- * Perp endpoints are cursor-paginated; spot endpoints are offset-paginated.
- * The three perp endpoints also accept `include_order_type`, which resolves each
+ * "perp" endpoints are cursor-paginated; spot endpoints are offset-paginated.
+ * The three "perp" endpoints also accept `include_order_type`, which resolves each
  * fill's originating order and adds an `orderType` field; the spot ones do not.
+ *
+ * hd_fills_count reads X-Total-Count from POST /info type=fills (limit 1) because
+ * GET /fills/count ignores coin and time filters live (it always returns the
+ * global total). Live 2026-10-21: perp without a user answers 400 "Unknown type:
+ * fills" unless a time filter is set, so a missing window becomes startTime 0;
+ * spot without a window counts all history; hip3 X-Total-Count only echoes the page.
  */
 export const fillsTools: ToolModule = [
   defineTool({
@@ -36,17 +43,44 @@ export const fillsTools: ToolModule = [
     group: 'fills',
     title: 'Search Hyperliquid fills',
     description:
-      'Search executed trade fills on Hyperliquid. Pick scope="perp" (default) or "spot". ' +
-      'Optionally filter by a trader address and/or coin, and a time window. Perp results page ' +
-      'with pagination.next_cursor; spot results page with pagination.next_offset. For the fast ' +
-      'last-24h perp feed, set recent=true (perp, no address). Set include_order_type=true (perp ' +
-      'only) to resolve how each fill was ordered.',
+      'Search executed trade fills on Hyperliquid. scope="perp" (default) reads /fills/, /fills/recent and ' +
+      '/fills/user/{address}, which despite the name return spot AND perp fills; scope="spot" reads the spot-only ' +
+      'endpoints. Filters: trader address, coin (spot also `coins`, several handles), side (B buy | A sell), ' +
+      'min notional size_usd (perp scope without address), has_priority_gas, a time window (perp with address ' +
+      'also time_range), and order (ASC|DESC). "perp" results page with pagination.next_cursor; spot results page ' +
+      'with pagination.next_offset. For the fast last-24h feed, set recent=true (perp scope, no address). Set ' +
+      'include_order_type=true (perp scope only) to resolve how each fill was ordered. Caveat: scope="spot" with an ' +
+      'address returns nothing unless coin, coins or start_time is given (live upstream behaviour).',
     inputSchema: {
       scope: z.enum(['perp', 'spot']).default('perp').describe('perp fills or spot fills.'),
       address: addressSchema
         .optional()
         .describe('Restrict to one trader. Omit for the market-wide feed.'),
       coin: coinSchema.optional().describe('Filter by asset symbol.'),
+      coins: z
+        .array(coinSchema)
+        .min(1)
+        .max(50)
+        .optional()
+        .describe('Spot scope only: several spot handles (e.g. ["@107","@142"]).'),
+      side: z
+        .enum(['B', 'A'])
+        .optional()
+        .describe('B = buy, A = sell. Not on perp scope with address.'),
+      size_usd: z
+        .number()
+        .min(0)
+        .optional()
+        .describe('Perp scope without address: minimum notional in USD.'),
+      has_priority_gas: z
+        .boolean()
+        .optional()
+        .describe('true = only fills that paid priority gas, false = only fills without.'),
+      order: z.enum(['ASC', 'DESC']).optional().describe('Sort by time (default DESC).'),
+      time_range: z
+        .enum(['1h', '24h', '7d', '30d'])
+        .optional()
+        .describe('Perp scope with address only: preset window (start_time overrides it).'),
       recent: z
         .boolean()
         .default(false)
@@ -69,6 +103,14 @@ export const fillsTools: ToolModule = [
       const hd = requireHd(ctx)
       let query: Query = { limit: args.limit }
       if (args.coin !== undefined) query.coin = args.coin
+      if (args.order !== undefined) query.order = args.order
+      if (args.has_priority_gas !== undefined) query.has_priority_gas = args.has_priority_gas
+      const userPerp = args.scope === 'perp' && args.address !== undefined
+      if (args.side !== undefined && args.address === undefined) query.side = args.side
+      if (args.size_usd !== undefined && args.scope === 'perp' && !args.address)
+        query.size_usd = args.size_usd
+      if (args.coins !== undefined && args.scope === 'spot') query.coins = args.coins
+      if (args.time_range !== undefined && userPerp) query.time_range = args.time_range
       query = buildTimeQuery(query, {
         start: args.start_time,
         end: args.end_time,
@@ -124,25 +166,54 @@ export const fillsTools: ToolModule = [
     group: 'fills',
     title: 'Count Hyperliquid fills',
     description:
-      'Total count of perp fills matching an optional coin and/or time window - without returning the rows. Use this to size a query before paging.',
+      'Count fills without returning them. With a coin, side or time window it reads the exact X-Total-Count of ' +
+      'POST /info type=fills: scope="perp" (default; includes HIP-3 "dex:COIN" markets) or "spot" ("@N" handles). ' +
+      'Without a window the count is all-time (perp from startTime 0, spot over all history), so ' +
+      'coin="@307", scope="spot" gives every fill of that pair since listing. Each trade produces one fill per ' +
+      'side: count with side="B" to get the number of trades. With no coin, side or window it returns the global ' +
+      'total of indexed fills (GET /fills/count).',
     inputSchema: {
+      scope: z.enum(['perp', 'spot']).default('perp').describe('perp (default) or spot fills.'),
       coin: coinSchema.optional(),
+      side: z.enum(['B', 'A']).optional().describe('Only buys (B) or sells (A).'),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
+      time_range: z
+        .enum(['1h', '24h', '7d', '30d'])
+        .optional()
+        .describe('Preset window ending now (overrides start_time/end_time).'),
     },
     async handler(args, ctx) {
       const hd = requireHd(ctx)
-      let query: Query = {}
-      if (args.coin !== undefined) query.coin = args.coin
-      query = buildTimeQuery(query, {
-        start: args.start_time,
-        end: args.end_time,
-        target: 'isoSnake',
-        startKey: 'start_time',
-        endKey: 'end_time',
-      })
-      const { data } = await hd.getApiSingle<unknown>('/fills/count', query)
-      return rawResult(data, 'Fill count.')
+      const hasWindow = Boolean(args.start_time || args.end_time || args.time_range)
+      if (args.coin === undefined && args.side === undefined && !hasWindow) {
+        const { data } = await hd.getApiSingle<unknown>('/fills/count')
+        return rawResult(
+          data,
+          'Global total of indexed fills (all markets, all time). Pass coin/side/window for a filtered count.',
+        )
+      }
+      const body: Record<string, unknown> = { type: 'fills', market: args.scope, limit: 1 }
+      if (args.coin !== undefined) body.coin = args.coin
+      if (args.side !== undefined) body.side = args.side
+      if (args.time_range !== undefined) body.timeRange = args.time_range
+      else {
+        if (args.start_time) body.startTime = encodeTime(args.start_time, 'epochCamel')
+        if (args.end_time) body.endTime = encodeTime(args.end_time, 'epochCamel')
+        if (args.scope === 'perp' && body.startTime === undefined) body.startTime = 0
+      }
+      const { headers } = await hd.postWithHeaders<unknown>('/info', body)
+      const total = headers.get('x-total-count')
+      const count = total === null ? null : Number(total)
+      const { type: _type, limit: _limit, ...filters } = body
+      const notes =
+        count === null
+          ? ['The upstream sent no X-Total-Count header for this query; the count is unknown.']
+          : []
+      return rawResult(
+        { count, scope: args.scope, filters, notes },
+        `Fill count${args.coin ? ` for ${args.coin}` : ''}: ${count ?? 'unknown'}.`,
+      )
     },
   }),
 ]
