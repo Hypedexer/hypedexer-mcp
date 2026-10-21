@@ -1,7 +1,9 @@
+import { accountTools } from './account.js'
 import { analyticsTools } from './analytics.js'
 import { buildersTools } from './builders.js'
 import { elysiumTools } from './elysium.js'
 import { evmTools } from './evm.js'
+import { exchangeTools } from './exchange.js'
 import { fillsTools } from './fills.js'
 import { fundingTools } from './funding.js'
 import { hip3Tools } from './hip3.js'
@@ -27,6 +29,8 @@ export const allModules: ToolModule[] = [
   publicTools,
   fillsTools,
   marketsTools,
+  exchangeTools,
+  accountTools,
   analyticsTools,
   tradersTools,
   liquidationsTools,

@@ -14,7 +14,8 @@ export interface HttpClientOptions {
 export interface HttpRequest {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
   path: string
-  query?: Record<string, string | number | boolean | null | undefined>
+  /** Array values are sent as repeated keys (`coins=a&coins=b`). */
+  query?: Record<string, string | number | boolean | readonly string[] | null | undefined>
   body?: unknown
   headers?: Record<string, string>
   signal?: AbortSignal
@@ -46,6 +47,15 @@ export class HttpClient {
   }
 
   async request<T>(req: HttpRequest): Promise<T> {
+    return (await this.requestWithHeaders<T>(req)).data
+  }
+
+  /**
+   * Like {@link request} but also returns the response headers. Some endpoints
+   * (POST /info historicalOrders, fills) page through X-Has-More / X-Next-Cursor
+   * / X-Total-Count headers rather than the body.
+   */
+  async requestWithHeaders<T>(req: HttpRequest): Promise<{ data: T; headers: Headers }> {
     const url = this.buildUrl(req.path, req.query)
     const headers: Record<string, string> = { ...this.defaultHeaders, ...(req.headers ?? {}) }
     let body: string | undefined
@@ -89,9 +99,9 @@ export class HttpClient {
       throw parseError(response.status, response.headers.get('content-type') ?? '', text)
     }
 
-    if (text.length === 0) return undefined as T
+    if (text.length === 0) return { data: undefined as T, headers: response.headers }
     try {
-      return JSON.parse(text) as T
+      return { data: JSON.parse(text) as T, headers: response.headers }
     } catch (cause) {
       throw new NetworkError('failed to parse response body', { cause, rawBody: text })
     }
@@ -103,7 +113,11 @@ export class HttpClient {
     if (query) {
       for (const [k, v] of Object.entries(query)) {
         if (v === undefined || v === null) continue
-        url.searchParams.set(k, String(v))
+        if (Array.isArray(v)) {
+          for (const item of v) url.searchParams.append(k, String(item))
+        } else {
+          url.searchParams.set(k, String(v))
+        }
       }
     }
     return url.toString()

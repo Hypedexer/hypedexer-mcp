@@ -89,3 +89,49 @@ function readEpochMs(row: unknown, key: string): number | null {
   }
   return null
 }
+
+/**
+ * Gap-free backwards paging for newest-first endpoints whose rows can share one
+ * timestamp (funding settlements, ledger entries, TWAP slices) and whose endTime
+ * is inclusive. When a page is full, the rows carrying its oldest timestamp may
+ * be only part of that instant, so they are dropped from this page and
+ * next_end_time is set to that same timestamp: the next call returns them whole.
+ * If every row shares one timestamp (nothing to drop safely), the page is kept
+ * and next_end_time steps 1 ms past it.
+ */
+export function settlementSafePage<T>(
+  rows: T[],
+  limit: number,
+  readTime: (row: T) => number | null,
+): { rows: T[]; pagination: PaginationOut } {
+  if (rows.length < limit || rows.length === 0) {
+    return { rows, pagination: { returned: rows.length, has_more: false } }
+  }
+  const oldest = readTime(rows[rows.length - 1] as T)
+  if (oldest === null) {
+    return { rows, pagination: { returned: rows.length, has_more: true } }
+  }
+  const kept = rows.filter((r) => readTime(r) !== oldest)
+  const hint =
+    'Page was full. Call again with end_time=pagination.next_end_time to continue backwards without gaps.'
+  if (kept.length === 0) {
+    return {
+      rows,
+      pagination: { returned: rows.length, has_more: true, next_end_time: oldest - 1, hint },
+    }
+  }
+  return {
+    rows: kept,
+    pagination: { returned: kept.length, has_more: true, next_end_time: oldest, hint },
+  }
+}
+
+/** Read an epoch-ms timestamp at a dotted path (e.g. "fill.time"). */
+export function epochAt(row: unknown, path: string): number | null {
+  let cur: unknown = row
+  for (const key of path.split('.')) {
+    if (typeof cur !== 'object' || cur === null) return null
+    cur = (cur as Record<string, unknown>)[key]
+  }
+  return readEpochMs({ v: cur }, 'v')
+}

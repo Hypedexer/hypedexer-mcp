@@ -14,6 +14,26 @@ import type { ToolResult } from '../types.js'
 import { errorResult } from './output.js'
 
 /**
+ * A tool-side input error that Zod cannot express (a field required only for
+ * some `view` values). Thrown before any request is sent.
+ */
+export class InputError extends Error {
+  readonly field: string
+
+  constructor(field: string, message: string) {
+    super(message)
+    this.name = 'InputError'
+    this.field = field
+  }
+}
+
+/** Throw an {@link InputError} when a view-conditional field is missing. */
+export function requireField<T>(value: T | undefined, field: string, context: string): T {
+  if (value === undefined) throw new InputError(field, `\`${field}\` is required for ${context}.`)
+  return value
+}
+
+/**
  * Map any thrown error into a recovery-steering tool error result. The message
  * tells the agent the specific fix, never an opaque code or traceback.
  */
@@ -23,6 +43,13 @@ export function handleToolError(err: unknown): ToolResult {
     return errorResult(
       `Invalid arguments: ${fields}.`,
       'Fix the listed fields and call again. Check each parameter against its described type and format.',
+    )
+  }
+
+  if (err instanceof InputError) {
+    return errorResult(
+      `Invalid arguments: ${err.message}`,
+      `Provide \`${err.field}\` and call again.`,
     )
   }
 

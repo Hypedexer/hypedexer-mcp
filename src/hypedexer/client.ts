@@ -12,7 +12,14 @@ export interface HypedexerClientOptions {
   defaultHeaders?: Record<string, string>
 }
 
-export type Query = Record<string, string | number | boolean | null | undefined>
+/** Query params. Array values are sent as repeated keys (`coins=a&coins=b`). */
+export type Query = Record<string, string | number | boolean | readonly string[] | null | undefined>
+
+/** A response body plus the paging headers some POST /info types use. */
+export interface WithHeaders<T> {
+  data: T
+  headers: Headers
+}
 
 /**
  * Thin typed caller over the vendored `HttpClient`. Methods return raw JSON
@@ -46,6 +53,17 @@ export class HypedexerClient {
     const req: HttpRequest = { method: 'POST', path, body }
     if (signal !== undefined) req.signal = signal
     return this.http.request<T>(req)
+  }
+
+  /** POST that also returns response headers (X-Has-More / X-Next-Cursor / X-Total-Count). */
+  postWithHeaders<T = unknown>(
+    path: string,
+    body: unknown,
+    signal?: AbortSignal,
+  ): Promise<WithHeaders<T>> {
+    const req: HttpRequest = { method: 'POST', path, body }
+    if (signal !== undefined) req.signal = signal
+    return this.http.requestWithHeaders<T>(req)
   }
 
   // --- Envelope-normalized convenience getters -----------------------------

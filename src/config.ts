@@ -6,6 +6,8 @@ export const TOOL_GROUPS = [
   'public',
   'fills',
   'markets',
+  'exchange',
+  'account',
   'analytics',
   'traders',
   'liquidations',
@@ -45,7 +47,18 @@ export const PRESETS: Record<string, ToolGroup[]> = {
   // Keyless smoke-test surface only.
   public: ['public'],
   // The everyday HypeDexer surface: high-traffic reads, no niche/heavy groups.
-  core: ['public', 'fills', 'markets', 'analytics', 'traders', 'liquidations', 'funding', 'vaults'],
+  core: [
+    'public',
+    'fills',
+    'markets',
+    'exchange',
+    'account',
+    'analytics',
+    'traders',
+    'liquidations',
+    'funding',
+    'vaults',
+  ],
   // Everything except the opt-in-only groups (`info`, `rpc`).
   all: TOOL_GROUPS.filter((g) => !OPT_IN_ONLY.has(g)),
 }
