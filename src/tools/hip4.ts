@@ -61,16 +61,26 @@ export const hip4Tools: ToolModule = [
       'venue attribution (`venue`, `deployer`, `deployer_fee_scale`); empty strings mean the market is ' +
       'operated by the Hyperliquid oracle. Use hd_hip4_providers for per-venue trading stats and ' +
       'hd_hip4_deployers for the registry behind a `deployer`. This is the same data served by ' +
-      '/hip4/outcomes (an alias). Offset-paginated: page with offset=pagination.next_offset while ' +
+      '/hip4/outcomes (an alias); rows also carry total_fills, total_volume (USD), unique_users and settled. ' +
+      'Filter with outcome_id, question_id (every outcome of one question), class (e.g. "priceBinary") and ' +
+      'underlying (e.g. "BTC"). Offset-paginated: page with offset=pagination.next_offset while ' +
       'pagination.has_more is true. Note: a coin= filter is silently ignored upstream, so it is ' +
-      'intentionally not exposed here - filter client-side instead.',
+      'intentionally not exposed here - use outcome_id instead.',
     inputSchema: {
+      outcome_id: z.number().int().min(0).optional().describe('Only this outcome.'),
+      question_id: z.number().int().min(0).optional().describe('Every outcome of this question.'),
+      class: z.string().trim().min(1).optional().describe('Market class, e.g. "priceBinary".'),
+      underlying: z.string().trim().min(1).optional().describe('Underlying, e.g. "BTC" or "HYPE".'),
       limit: limitSchema(1000),
       offset: offsetSchema,
     },
     async handler(args, ctx) {
       const hd = requireHd(ctx)
       const query: Query = { limit: args.limit, offset: args.offset }
+      if (args.outcome_id !== undefined) query.outcome_id = args.outcome_id
+      if (args.question_id !== undefined) query.question_id = args.question_id
+      if (args.class !== undefined) query.class = args.class
+      if (args.underlying !== undefined) query.underlying = args.underlying
       const page = await hd.getHip4('/hip4/markets', query)
       const pagination = offsetPagination(page, args.offset, args.limit)
       const { meta, notes } = hip4Meta(page)
@@ -175,12 +185,14 @@ export const hip4Tools: ToolModule = [
       'offset=pagination.next_offset while pagination.has_more is true. ' +
       'Quirk: each row\'s `description` field is pipe-delimited ("a|b|c") rather than free text - split on "|" to read the parts.',
     inputSchema: {
+      question_id: z.number().int().min(0).optional().describe('Only this question.'),
       limit: limitSchema(1000),
       offset: offsetSchema,
     },
     async handler(args, ctx) {
       const hd = requireHd(ctx)
       const query: Query = { limit: args.limit, offset: args.offset }
+      if (args.question_id !== undefined) query.question_id = args.question_id
       const page = await hd.getHip4('/hip4/questions', query)
       const pagination = offsetPagination(page, args.offset, args.limit)
       const { meta, notes } = hip4Meta(page)
@@ -201,12 +213,15 @@ export const hip4Tools: ToolModule = [
     title: 'HIP-4 outcome tokens',
     description:
       'List the tradable outcome tokens for HIP-4 markets (the per-outcome spot instruments). ' +
-      'Optionally filter to a single token by its spot handle via coin="@N" (this filter works on this endpoint). ' +
+      'Optionally filter to a single token by its spot handle via coin="@N" or by outcome_id. Caveat: rows start at ' +
+      'outcome_id 0 = USDC, 1 = PURR, so this table also lists ordinary spot tokens (e.g. coin "@307" maps to ' +
+      'spot_name LICKO here, while the spot pair @307 is HTAO/USDC): resolve spot pairs with hd_spot_meta. ' +
       'Offset-paginated: page with offset=pagination.next_offset while pagination.has_more is true.',
     inputSchema: {
       coin: coinSchema
         .optional()
         .describe('Filter to one outcome token by spot handle, e.g. "@290". Omit for all.'),
+      outcome_id: z.number().int().min(0).optional().describe('Filter to one outcome id.'),
       limit: limitSchema(1000),
       offset: offsetSchema,
     },
@@ -214,6 +229,7 @@ export const hip4Tools: ToolModule = [
       const hd = requireHd(ctx)
       const query: Query = { limit: args.limit, offset: args.offset }
       if (args.coin !== undefined) query.coin = args.coin
+      if (args.outcome_id !== undefined) query.outcome_id = args.outcome_id
       const page = await hd.getHip4('/hip4/outcome-tokens', query)
       const pagination = offsetPagination(page, args.offset, args.limit)
       const { meta, notes } = hip4Meta(page)
@@ -232,8 +248,8 @@ export const hip4Tools: ToolModule = [
       'Executed trade fills on HIP-4 outcome markets, fully attributed: each row carries the trader (`user`), the ' +
       'market (`coin`, `outcome_id`, `market_name`, `market_description`) and the venue that deployed it (`venue`, ' +
       '`deployer`; empty strings mean the oracle-operated legacy venue). Filter by user, coin and/or outcome_id, and ' +
-      'optionally bound by a time window (start_time/end_time, ISO-8601 or epoch-ms - sent to the server as bare ISO ' +
-      'dates). Each row carries an epoch-ms `time_ms` and a `feeToken` of "USDH" or a "+NNN" token id. ' +
+      'optionally bound by a time window (start_time/end_time, ISO-8601 or epoch-ms - sent as epoch ms, so intra-day ' +
+      'windows are exact). Each row carries an epoch-ms `time_ms` and a `feeToken` of "USDH" or a "+NNN" token id. ' +
       'Offset-paginated: page with offset=pagination.next_offset while pagination.has_more is true.',
     inputSchema: {
       user: addressSchema
@@ -265,7 +281,7 @@ export const hip4Tools: ToolModule = [
       query = buildTimeQuery(query, {
         start: args.start_time,
         end: args.end_time,
-        target: 'isoBare',
+        target: 'epochCamel',
         startKey: 'start',
         endKey: 'end',
       })
@@ -285,10 +301,14 @@ export const hip4Tools: ToolModule = [
     group: 'hip4',
     title: 'HIP-4 fees',
     description:
-      'Daily fee records for HIP-4 markets. Each row is keyed by a `date` in YYYY-MM-DD. Optionally bound by a ' +
-      'time window (start_time/end_time, ISO-8601 or epoch-ms - sent as bare ISO dates). Offset-paginated: page ' +
-      'with offset=pagination.next_offset while pagination.has_more is true.',
+      'Fee aggregates for HIP-4 markets grouped by user, coin, feeToken and `date` (YYYY-MM-DD): fills, ' +
+      'total_fee_raw, total_fee_usdc, total_notional, effective_rate; only fills with a fee are counted ("#" markets ' +
+      'charge no fee, "@" outcome tokens pay spot fees). Filter by user and/or coin (e.g. "#132151"; HIP-4 coins only, ' +
+      'an ordinary spot pair returns nothing) and bound by a time window (start_time/end_time, ISO-8601 or epoch-ms, ' +
+      'sent as epoch ms). Offset-paginated: page with offset=pagination.next_offset while pagination.has_more is true.',
     inputSchema: {
+      user: addressSchema.optional().describe('Only this wallet.'),
+      coin: z.string().trim().min(1).optional().describe('Only this HIP-4 coin, e.g. "#132151".'),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
       limit: limitSchema(1000),
@@ -297,10 +317,12 @@ export const hip4Tools: ToolModule = [
     async handler(args, ctx) {
       const hd = requireHd(ctx)
       let query: Query = { limit: args.limit, offset: args.offset }
+      if (args.user !== undefined) query.user = args.user
+      if (args.coin !== undefined) query.coin = args.coin
       query = buildTimeQuery(query, {
         start: args.start_time,
         end: args.end_time,
-        target: 'isoBare',
+        target: 'epochCamel',
         startKey: 'start',
         endKey: 'end',
       })
@@ -319,10 +341,12 @@ export const hip4Tools: ToolModule = [
     group: 'hip4',
     title: 'HIP-4 settlements',
     description:
-      'Settlement events for resolved HIP-4 outcome markets. Optionally bound by a time window (start_time/end_time, ' +
-      'ISO-8601 or epoch-ms - sent as bare ISO dates). Offset-paginated: page with offset=pagination.next_offset ' +
+      'Settlement events for resolved HIP-4 outcome markets (settle_fraction 0 = No, 1 = Yes, fractional possible). ' +
+      'Filter by outcome_id and bound by a time window (start_time/end_time, ISO-8601 or epoch-ms, sent as epoch ' +
+      'ms). Offset-paginated: page with offset=pagination.next_offset ' +
       'while pagination.has_more is true. Quirk: rows can be duplicated; de-duplicate on the (outcome_id, nonce) pair.',
     inputSchema: {
+      outcome_id: z.number().int().min(0).optional().describe('Only this outcome.'),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
       limit: limitSchema(1000),
@@ -331,10 +355,11 @@ export const hip4Tools: ToolModule = [
     async handler(args, ctx) {
       const hd = requireHd(ctx)
       let query: Query = { limit: args.limit, offset: args.offset }
+      if (args.outcome_id !== undefined) query.outcome_id = args.outcome_id
       query = buildTimeQuery(query, {
         start: args.start_time,
         end: args.end_time,
-        target: 'isoBare',
+        target: 'epochCamel',
         startKey: 'start',
         endKey: 'end',
       })
@@ -354,11 +379,12 @@ export const hip4Tools: ToolModule = [
     group: 'hip4',
     title: 'HIP-4 analytics',
     description:
-      'Aggregated analytics rows for HIP-4 markets, each carrying a `bucket` timestamp. Optionally choose the bucket ' +
-      'granularity with interval (1h/4h/1d; the server applies a default when omitted), and filter by coin (integer ' +
-      'csv, e.g. "290,291") and/or outcome_id. Optionally bound by a time window (start_time/end_time, ISO-8601 or ' +
-      'epoch-ms - sent as bare ISO dates). Offset-paginated with a higher cap (up to 2000 per page): page with ' +
-      'offset=pagination.next_offset while pagination.has_more is true.',
+      'Time-bucketed HIP-4 activity, newest bucket first: fills, volume, buy_volume, sell_volume, fees_usdc, ' +
+      'unique_users per `bucket`. Choose the granularity with interval (1h/4h/1d; server default when omitted), ' +
+      'filter by coin (integer ids, comma-separated, e.g. "10,11") and/or outcome_id, and size the page with limit ' +
+      '(up to 2000). Live limits (2026-10-21): any start/end window or cursor makes the upstream answer 500 and an ' +
+      'offset is ignored, so this tool sends neither: it returns the latest `limit` buckets. Widen the interval or ' +
+      'raise limit to reach further back.',
     inputSchema: {
       interval: z
         .enum(['1h', '4h', '1d'])
@@ -378,29 +404,18 @@ export const hip4Tools: ToolModule = [
         .min(1)
         .optional()
         .describe('Filter analytics to a specific outcome by its id.'),
-      start_time: startTimeSchema,
-      end_time: endTimeSchema,
       limit: limitSchema(2000),
-      offset: offsetSchema,
     },
     async handler(args, ctx) {
       const hd = requireHd(ctx)
-      let query: Query = { limit: args.limit, offset: args.offset }
+      const query: Query = { limit: args.limit }
       if (args.interval !== undefined) query.interval = args.interval
       if (args.coin !== undefined) query.coin = args.coin
       if (args.outcome_id !== undefined) query.outcome_id = args.outcome_id
-      query = buildTimeQuery(query, {
-        start: args.start_time,
-        end: args.end_time,
-        target: 'isoBare',
-        startKey: 'start',
-        endKey: 'end',
-      })
       const page = await hd.getHip4('/hip4/analytics', query)
-      const pagination = offsetPagination(page, args.offset, args.limit)
       const { meta, notes } = hip4Meta(page)
       return buildResult(
-        { data: page.data, pagination, meta, notes },
+        { data: page.data, meta, notes },
         { summary: 'HIP-4 analytics.', maxTokens: ctx.config.maxResponseTokens },
       )
     },
