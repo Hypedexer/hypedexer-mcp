@@ -5,21 +5,18 @@ import { addressSchema, z } from './shared/schemas.js'
 import { type ToolModule, defineTool } from './types.js'
 
 /**
- * Live WebSocket channels (HypeDexer Data API, wss://.../ws).
+ * Indexed WebSocket channel (HypeDexer Data API, wss://.../ws, multiplex envelope).
  *
- * MCP tools are request/response, while these channels push continuously. Each
- * tool here opens the socket, subscribes to one channel, collects pushed
- * messages for a bounded window (`seconds`, or until `max_items`), then closes
- * and returns the batch. The result is a point-in-time snapshot, not a standing
- * subscription; call again for a fresh window. All five channels from the
- * server's `welcome` frame are covered:
- *   - completed_trades : closed round-trip trades (user-scopable).
- *   - fills_spot       : spot fills, low-latency push. The REST /fills/spot/*
- *                        endpoints (hd_fills_search scope=spot) work again
- *                        upstream since 2026-07-06 and cover history.
- *   - recent_activity  : multiplexed firehose; each item carries a `stream` field.
- *   - liquidation      : liquidation events (note the singular channel name).
- *   - hip4_events      : HIP-4 prediction-market events.
+ * MCP tools are request/response, while the channel pushes continuously. The tool
+ * opens the socket, subscribes, collects pushed messages for a bounded window
+ * (`seconds`, or until `max_items`), then closes and returns the batch.
+ *
+ * Live 2026-10-21: the public endpoint serves `liquidations` (plural), with
+ * optional filters user, users (up to 50), amount_dollars and builder. The former
+ * completed_trades, fills_spot, recent_activity and hip4_events channels, and the
+ * singular `liquidation`, are refused ("Unsupported subscription"), so their tools
+ * were removed: use hd_completed_trades_search, hd_fills_search scope=spot and
+ * hd_hip4_fills (REST) instead.
  */
 
 const secondsSchema = z
@@ -48,6 +45,7 @@ interface StreamArgs {
   seconds: number
   max_items: number
   user?: string | undefined
+  extra?: Record<string, unknown>
 }
 
 /** Shared handler body: collect one channel for a window and shape the result. */
@@ -67,6 +65,7 @@ async function collect(
     apiKey,
     channel,
     ...(args.user ? { user: args.user } : {}),
+    ...(args.extra ? { extra: args.extra } : {}),
     durationMs: args.seconds * 1000,
     maxItems: args.max_items,
     connectTimeoutMs: ctx.config.requestTimeoutMs,
@@ -90,8 +89,9 @@ async function collect(
   ]
   if (result.item_count === 0) {
     notes.push(
-      'No messages arrived in the window. This channel can be low-frequency (e.g. liquidation and ' +
-        'hip4_events are often idle); retry with a longer `seconds` window.',
+      'No liquidation matched in the window (the replayed cache empties after ~10 minutes without ' +
+        'events, and filters narrow it further); retry with a longer `seconds` window or use ' +
+        'hd_liquidations_search for history.',
     )
   }
 
@@ -106,100 +106,49 @@ async function collect(
 
 export const streamsTools: ToolModule = [
   defineTool({
-    name: 'hd_stream_completed_trades',
-    group: 'streams',
-    title: 'Stream completed trades (live WS)',
-    description:
-      'Open the HypeDexer WebSocket, subscribe to the `completed_trades` channel, and collect closed ' +
-      'round-trip trades pushed live for a bounded window. This is a high-volume channel (~2 msgs/s ' +
-      'market-wide), so it usually fills `max_items` quickly. Pass `user` to scope to one wallet. Each ' +
-      'item has the same shape as a REST trade-history row. Returns a point-in-time batch, not a ' +
-      'standing subscription - call again for a fresh window.',
-    inputSchema: {
-      user: addressSchema
-        .optional()
-        .describe(
-          'Scope to one wallet (0x...). Only this channel supports user scoping. Omit for market-wide.',
-        ),
-      seconds: secondsSchema,
-      max_items: maxItemsSchema,
-    },
-    async handler(args, ctx) {
-      return collect('completed_trades', args, ctx, 'completed trade')
-    },
-  }),
-
-  defineTool({
-    name: 'hd_stream_fills_spot',
-    group: 'streams',
-    title: 'Stream spot fills (live WS)',
-    description:
-      'Open the HypeDexer WebSocket, subscribe to the `fills_spot` channel, and collect spot fills ' +
-      'pushed live for a bounded window. Best for the freshest pushes; for historical or filtered ' +
-      'spot fills use hd_fills_search with scope="spot" (REST, offset-paginated). Items use ' +
-      'spot coin handles (e.g. coin "@107" with a coin_meaning like "HYPE"). Returns a point-in-time ' +
-      'batch; call again for a fresh window.',
-    inputSchema: {
-      seconds: secondsSchema,
-      max_items: maxItemsSchema,
-    },
-    async handler(args, ctx) {
-      return collect('fills_spot', args, ctx, 'spot fill')
-    },
-  }),
-
-  defineTool({
-    name: 'hd_stream_recent_activity',
-    group: 'streams',
-    title: 'Stream recent activity firehose (live WS)',
-    description:
-      'Open the HypeDexer WebSocket, subscribe to the `recent_activity` channel, and collect the ' +
-      'multiplexed activity firehose for a bounded window. This channel re-emits the other channels ' +
-      '(completed_trades, fills_spot, ...) with an extra `stream` field on each item telling you which ' +
-      'underlying channel it came from. Use it for a single combined feed; use the per-channel tools ' +
-      'when you only want one stream. Returns a point-in-time batch; call again for a fresh window.',
-    inputSchema: {
-      seconds: secondsSchema,
-      max_items: maxItemsSchema,
-    },
-    async handler(args, ctx) {
-      return collect('recent_activity', args, ctx, 'activity')
-    },
-  }),
-
-  defineTool({
     name: 'hd_stream_liquidations',
     group: 'streams',
     title: 'Stream liquidations (live WS)',
     description:
-      'Open the HypeDexer WebSocket, subscribe to the `liquidation` channel (note: singular upstream ' +
-      'channel name), and collect liquidation events pushed live for a bounded window. This is a ' +
-      'low-frequency channel and is often idle, so an empty result is normal - use a longer `seconds` ' +
-      'window if you need to catch events. Returns a point-in-time batch; call again for a fresh window.',
+      'Open the HypeDexer WebSocket, subscribe to `liquidations`, and collect liquidation events for a ' +
+      'bounded window. Right after subscribing the server replays up to 200 cached recent events (newest ' +
+      'first), then streams new ones. One item per liquidated position, aggregated across liquidators: ' +
+      'coin, liquidated_user, size_total, notional_total, fill_px_vwap, mark_px, liq_dir, liquidators, ' +
+      'liquidator_count, fee_total_liquidated, builder, tid, time_ms. Filters: user (liquidated user or a ' +
+      'liquidator), users (up to 50, combined with user), amount_dollars (minimum notional in USD), builder ' +
+      '(builder code on the fills). Returns a point-in-time batch; for history use hd_liquidations_search.',
     inputSchema: {
+      user: addressSchema
+        .optional()
+        .describe('Only liquidations where this address is liquidated or a liquidator.'),
+      users: z
+        .array(addressSchema)
+        .min(1)
+        .max(50)
+        .optional()
+        .describe('Up to 50 addresses (combined with `user`).'),
+      amount_dollars: z
+        .number()
+        .min(0)
+        .optional()
+        .describe('Only liquidations with notional_total >= this USD amount.'),
+      builder: addressSchema
+        .optional()
+        .describe('Only liquidations whose fills carried this builder code.'),
       seconds: secondsSchema,
       max_items: maxItemsSchema,
     },
     async handler(args, ctx) {
-      return collect('liquidation', args, ctx, 'liquidation')
-    },
-  }),
-
-  defineTool({
-    name: 'hd_stream_hip4_events',
-    group: 'streams',
-    title: 'Stream HIP-4 events (live WS)',
-    description:
-      'Open the HypeDexer WebSocket, subscribe to the `hip4_events` channel, and collect HIP-4 ' +
-      'prediction-market events pushed live for a bounded window. This is a low-frequency channel and ' +
-      'is often idle, so an empty result is normal - use a longer `seconds` window if you need to catch ' +
-      'events. Returns a point-in-time batch; call again for a fresh window.',
-    inputSchema: {
-      seconds: secondsSchema,
-      max_items: maxItemsSchema,
-    },
-    async handler(args, ctx) {
-      return collect('hip4_events', args, ctx, 'HIP-4 event')
+      const extra: Record<string, unknown> = {}
+      if (args.users !== undefined) extra.users = args.users
+      if (args.amount_dollars !== undefined) extra.amount_dollars = args.amount_dollars
+      if (args.builder !== undefined) extra.builder = args.builder
+      return collect(
+        'liquidations',
+        { seconds: args.seconds, max_items: args.max_items, user: args.user, extra },
+        ctx,
+        'liquidation',
+      )
     },
   }),
 ]

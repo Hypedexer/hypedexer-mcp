@@ -1,5 +1,6 @@
 import { type LiveChannel, collectChannel } from '../hypedexer/ws-client.js'
 import type { ToolContext } from './context.js'
+import { requireField } from './shared/errors.js'
 import { buildResult } from './shared/output.js'
 import { addressSchema, coinSchema, z } from './shared/schemas.js'
 import { type ToolModule, defineTool } from './types.js'
@@ -44,6 +45,7 @@ interface LiveArgs {
   max_items: number
   coin?: string | undefined
   user?: string | undefined
+  extra?: Record<string, unknown>
 }
 
 /** Shared handler: collect one mirror channel for a window and shape the result. */
@@ -66,6 +68,7 @@ async function collectLive(
     mode: 'mirror',
     ...(args.coin ? { coin: args.coin } : {}),
     ...(args.user ? { user: args.user } : {}),
+    ...(args.extra ? { extra: args.extra } : {}),
     durationMs: args.seconds * 1000,
     maxItems: args.max_items,
     connectTimeoutMs: ctx.config.requestTimeoutMs,
@@ -147,11 +150,9 @@ export const liveTools: ToolModule = [
     group: 'live',
     title: 'Stream best bid/offer (Live WS)',
     description:
-      'Live mirror channel `bbo`: top-of-book best bid and offer for one coin. NOTE: as of 2026-07-01 ' +
-      'the upstream mirror hub accepts the bbo subscription but does not emit bbo frames (verified: it ' +
-      'stays silent while l2Book for the same coin streams normally). For reliable top-of-book, use ' +
-      'hd_live_l2_book and read the first level of each side. This tool is kept for when the upstream ' +
-      'channel starts emitting. Point-in-time snapshot; call again for a fresh window.',
+      'Live mirror channel `bbo`: top-of-book best bid and offer for one coin, one frame per change ' +
+      '({coin, time, bbo: [bid, ask]} with px, sz, n). Live-verified 2026-10-21 (the 2026-07-01 gap where ' +
+      'no frames arrived is gone). Point-in-time snapshot; call again for a fresh window.',
     inputSchema: { coin: coinRequired, seconds: secondsSchema, max_items: maxItemsSchema },
     async handler(args, ctx) {
       return collectLive(
@@ -159,9 +160,8 @@ export const liveTools: ToolModule = [
         args,
         ctx,
         'bbo',
-        'The upstream mirror hub did not emit any bbo frames (a known gap as of 2026-07-01: the ' +
-          'subscription is accepted but no data is pushed). Use hd_live_l2_book and read the top level ' +
-          'of each side for best bid/offer instead.',
+        'No bbo frame arrived in the window. Retry, or use hd_live_l2_book and read the top level of ' +
+          'each side.',
       )
     },
   }),
@@ -203,10 +203,10 @@ export const liveTools: ToolModule = [
     group: 'live',
     title: 'Stream incremental L4 book deltas (Live WS)',
     description:
-      'Live mirror channel `l4BookUpdates`: incremental per-order L4 book deltas for one coin (adds, ' +
-      'cancels, fills against resting orders), without re-sending the full book. Opens the mirror ' +
-      'socket, subscribes scoped to `coin`, and collects deltas for a bounded window. Point-in-time ' +
-      'snapshot; call again for a fresh window.',
+      'Live mirror channel `l4BookUpdates`: incremental per-order L4 book deltas (adds, cancels, fills ' +
+      'against resting orders). CAVEAT: live on 2026-10-21 the subscription was acknowledged but no data ' +
+      'frame arrived (with or without coin, on /ws and on mirror), so expect an empty result; for order-level ' +
+      'activity use hd_order_book view=diffs (REST, recent book diffs with user and oid).',
     inputSchema: { coin: coinRequired, seconds: secondsSchema, max_items: maxItemsSchema },
     async handler(args, ctx) {
       return collectLive('l4BookUpdates', args, ctx, 'l4 update')
@@ -218,11 +218,10 @@ export const liveTools: ToolModule = [
     group: 'live',
     title: 'Stream public trade prints (Live WS)',
     description:
-      'Live mirror channel `trades`: raw public trade prints for one coin as they execute. NOTE: as of ' +
-      '2026-07-01 the upstream mirror hub rejects this subscription ("Unsupported subscription: trades"), ' +
-      'so this tool currently errors. Use hd_stream_completed_trades (indexed round-trip trades) or ' +
-      'hd_live_l2_book instead. Kept for when the upstream channel is enabled. Opens the mirror socket, ' +
-      'subscribes scoped to `coin`, and collects for a bounded window.',
+      'Live mirror channel `trades`: public trade prints for one coin as they execute (coin, side, px, sz, ' +
+      'time, hash, tid, users); the first frame is a snapshot of recent trades. Live-verified 2026-10-21 (the ' +
+      '2026-07-01 rejection is gone). Opens the mirror socket, subscribes scoped to `coin`, and collects for ' +
+      'a bounded window. For a one-shot REST read use hd_order_book view=trades.',
     inputSchema: { coin: coinRequired, seconds: secondsSchema, max_items: maxItemsSchema },
     async handler(args, ctx) {
       return collectLive('trades', args, ctx, 'trade')
@@ -236,11 +235,90 @@ export const liveTools: ToolModule = [
     description:
       'Live mirror channel `allMids`: mid prices for every coin, updated live. Opens the mirror socket, ' +
       'subscribes, and collects mid-price frames for a bounded window. For a one-shot snapshot without a ' +
-      'socket you can also use the keyless hl_public_all_mids REST tool. Point-in-time snapshot; call ' +
-      'again for a fresh window.',
-    inputSchema: { seconds: secondsSchema, max_items: maxItemsSchema },
+      'socket you can also use hd_exchange_info view=all_mids or the keyless hl_public_all_mids. `dex` ' +
+      'narrows to one HIP-3 dex (e.g. "xyz"). Point-in-time snapshot; call again for a fresh window.',
+    inputSchema: {
+      dex: z
+        .string()
+        .trim()
+        .min(1)
+        .optional()
+        .describe('Only the mids of this perp dex, e.g. "xyz".'),
+      seconds: secondsSchema,
+      max_items: maxItemsSchema,
+    },
     async handler(args, ctx) {
-      return collectLive('allMids', args, ctx, 'mids')
+      return collectLive(
+        'allMids',
+        {
+          seconds: args.seconds,
+          max_items: args.max_items,
+          ...(args.dex ? { extra: { dex: args.dex } } : {}),
+        },
+        ctx,
+        'mids',
+      )
+    },
+  }),
+
+  defineTool({
+    name: 'hd_live_feed',
+    group: 'live',
+    title: 'Stream other live channels (Live WS)',
+    description:
+      'Bounded snapshot of the remaining Live mirror channels, picked with `channel`:\n' +
+      '- candle (coin; interval 5s|30s|1m|5m|15m|30m|1h|4h|1d, default 1m): live OHLCV for one coin; closed ' +
+      'buckets carry closed:true. allCandles (interval): the same frames for every coin (high volume).\n' +
+      '- activeAssetCtx (coin): mark, oracle, mid, funding, open interest, 24h volumes for one coin.\n' +
+      '- fundingRates: current funding rate per coin. setOracleUpdates: oracle price sets (HIP-3 dexs included).\n' +
+      '- allTwapStatusUpdates: TWAP status events for all users (snapshot then updates).\n' +
+      '- orderUpdates (user): order status changes. userEvents (user): liquidations and one frame per funding ' +
+      'payment (can be silent for a while). userFundings (user): the 100 most recent funding payments, then ' +
+      'one frame per hourly settlement. userNonFundingLedgerUpdates (user): the 100 most recent ledger entries, ' +
+      'then new ones.\n' +
+      'Opens wss://.../ws?mode=mirror, subscribes, collects frames for `seconds` or `max_items`, closes.',
+    inputSchema: {
+      channel: z
+        .enum([
+          'candle',
+          'allCandles',
+          'activeAssetCtx',
+          'fundingRates',
+          'setOracleUpdates',
+          'allTwapStatusUpdates',
+          'orderUpdates',
+          'userEvents',
+          'userFundings',
+          'userNonFundingLedgerUpdates',
+        ])
+        .describe('The live channel.'),
+      coin: coinSchema.optional().describe('candle and activeAssetCtx (required there).'),
+      user: addressSchema
+        .optional()
+        .describe(
+          'orderUpdates, userEvents, userFundings, userNonFundingLedgerUpdates (required there).',
+        ),
+      interval: z
+        .enum(['5s', '30s', '1m', '5m', '15m', '30m', '1h', '4h', '1d'])
+        .optional()
+        .describe('candle / allCandles bucket (default 1m).'),
+      seconds: secondsSchema,
+      max_items: maxItemsSchema,
+    },
+    async handler(args, ctx) {
+      const needsCoin = args.channel === 'candle' || args.channel === 'activeAssetCtx'
+      const needsUser = [
+        'orderUpdates',
+        'userEvents',
+        'userFundings',
+        'userNonFundingLedgerUpdates',
+      ].includes(args.channel)
+      const live: LiveArgs = { seconds: args.seconds, max_items: args.max_items }
+      if (needsCoin) live.coin = requireField(args.coin, 'coin', `channel=${args.channel}`)
+      if (needsUser) live.user = requireField(args.user, 'user', `channel=${args.channel}`)
+      if (args.channel === 'candle' || args.channel === 'allCandles')
+        live.extra = { interval: args.interval ?? '1m' }
+      return collectLive(args.channel, live, ctx, args.channel)
     },
   }),
 ]

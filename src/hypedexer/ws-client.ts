@@ -1,18 +1,13 @@
 import { WSAuthError, WebSocketError } from '../core/errors.js'
 
 /**
- * Indexed (multiplex) channels - the HypeDexer indexer feed on `wss://.../ws`.
- * From the live server's `welcome` frame (swagger only documents
- * `completed_trades`). Note the singular `liquidation`. `recent_activity` is a
- * multiplexed firehose that re-emits the others with an extra `stream` field.
+ * Indexed (multiplex) channels on `wss://.../ws`. Live 2026-10-21 the public
+ * endpoint serves only `liquidations` (plural on subscribe; its data frames
+ * carry `type: "liquidation"` in the `{ type, count, data: [] }` envelope).
+ * `completed_trades`, `fills_spot`, `recent_activity`, `hip4_events` and the
+ * singular `liquidation` all answer "Unsupported subscription".
  */
-export const WS_CHANNELS = [
-  'completed_trades',
-  'fills_spot',
-  'recent_activity',
-  'liquidation',
-  'hip4_events',
-] as const
+export const WS_CHANNELS = ['liquidations'] as const
 
 /**
  * Live (mirror) channels - Hyperliquid live feeds proxied on
@@ -28,6 +23,16 @@ export const LIVE_CHANNELS = [
   'l4BookUpdates',
   'trades',
   'allMids',
+  'candle',
+  'allCandles',
+  'activeAssetCtx',
+  'fundingRates',
+  'setOracleUpdates',
+  'allTwapStatusUpdates',
+  'orderUpdates',
+  'userEvents',
+  'userFundings',
+  'userNonFundingLedgerUpdates',
 ] as const
 
 export type WsChannel = (typeof WS_CHANNELS)[number]
@@ -82,6 +87,8 @@ export interface CollectOptions {
   user?: string
   /** Coin to scope to (mirror book/trade channels: bbo, l2Book, l4Book, l4BookUpdates, trades). */
   coin?: string
+  /** Extra subscription fields (filters such as interval, dex, amount_dollars, users). */
+  extra?: Record<string, unknown>
   /** How long to listen before closing and returning, in ms (default 5000). */
   durationMs?: number
   /** Stop early once this many items have been collected (default 200). */
@@ -243,6 +250,9 @@ export function collectChannel(opts: CollectOptions): Promise<CollectResult> {
       const subscription: Record<string, unknown> = { type: channel }
       if (opts.coin) subscription.coin = opts.coin
       if (opts.user) subscription.user = opts.user
+      for (const [k, v] of Object.entries(opts.extra ?? {})) {
+        if (v !== undefined) subscription[k] = v
+      }
       try {
         ws.send(JSON.stringify({ method: 'subscribe', subscription }))
       } catch (err) {
