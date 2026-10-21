@@ -1,7 +1,7 @@
 import type { Query } from '../hypedexer/client.js'
 import { requireHd } from './context.js'
 import { buildResult, rawResult } from './shared/output.js'
-import { addressSchema, viewSchema } from './shared/schemas.js'
+import { addressSchema, viewSchema, z } from './shared/schemas.js'
 import { type ToolModule, defineTool } from './types.js'
 
 /**
@@ -21,20 +21,36 @@ export const marketsTools: ToolModule = [
       '/overview endpoints in parallel and returns a single object with: ' +
       'total_fees (spot/perp/total fee USD), volume_24h ({value, variationPct}), ' +
       'total_fills ({value, variationPct}), active_traders ({value, variationPct}), ' +
-      'and top_traders (an array of the best 24h traders by user, with tradeCount, ' +
-      'totalVolume, winRate, totalPnl). Use this for a fast "state of the market" ' +
-      'read instead of calling each metric separately. Note: active_traders, ' +
-      'volume_24h, and total_fills are computed server-side and are slower ' +
-      '(~2-8s, server-cached); fees and top_traders return quickly. No inputs.',
-    inputSchema: {},
-    async handler(_args, ctx) {
+      'and top_traders (the best 24h traders, with tradeCount, totalVolume, winRate, ' +
+      'totalPnl; ranked by top_traders_sort: pnl_pos (default, biggest winners), pnl_neg ' +
+      '(biggest losers), volume or trades; top_traders_limit 1-50, default 20). Use this for ' +
+      'a fast "state of the market" read instead of calling each metric separately. Note: ' +
+      'active_traders, volume_24h, and total_fills are computed server-side and are slower ' +
+      '(~2-8s, server-cached); fees and top_traders return quickly.',
+    inputSchema: {
+      top_traders_sort: z
+        .enum(['pnl_pos', 'pnl_neg', 'volume', 'trades'])
+        .optional()
+        .describe('Ranking of top_traders (default pnl_pos).'),
+      top_traders_limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe('Number of top_traders rows (1-50, default 20).'),
+    },
+    async handler(args, ctx) {
       const hd = requireHd(ctx)
+      const topQuery: Query = {}
+      if (args.top_traders_sort !== undefined) topQuery.sort = args.top_traders_sort
+      if (args.top_traders_limit !== undefined) topQuery.limit = args.top_traders_limit
       const [fees, volume, fills, activeTraders, topTraders] = await Promise.all([
         hd.getApiSingle<unknown>('/overview/total-fees-24h'),
         hd.getApiSingle<unknown>('/overview/trading-volume-24h'),
         hd.getApiSingle<unknown>('/overview/total-fills-24h'),
         hd.getApiSingle<unknown>('/overview/active-traders-24h'),
-        hd.getApiList<unknown>('/overview/top-traders-24h'),
+        hd.getApiList<unknown>('/overview/top-traders-24h', topQuery),
       ])
       return rawResult(
         {

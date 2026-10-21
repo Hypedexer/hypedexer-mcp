@@ -19,7 +19,7 @@ import { type ToolModule, defineTool } from './types.js'
  *
  * One search tool over two endpoints, selected by `recent`:
  *   recent=false (default) -> GET /liquidations/        (full history)
- *   recent=true            -> GET /liquidations/recent  (last 24h, cached, faster)
+ *   recent=true            -> GET /liquidations/recent  (last ~2h by default, faster)
  *
  * Both are cursor-paginated. Each row is a single liquidation fill: coin,
  * liquidated_user, size_total, notional_total, fill_px_vwap, mark_px, method,
@@ -32,24 +32,29 @@ export const liquidationsTools: ToolModule = [
     title: 'Search Hyperliquid liquidations',
     description:
       'Search Hyperliquid liquidation events (forced position closes). Optionally filter by coin, ' +
-      'the liquidated trader address (user), and a time window. Results page with ' +
-      'pagination.next_cursor - call again with cursor=pagination.next_cursor while has_more is true. ' +
-      'Set recent=true for the fast last-24h cached feed. Ordering is newest-first (order="desc"); ' +
+      'the liquidated trader address (user), a minimum notional in USD (amount_dollars), and a time window. ' +
+      'Results page with pagination.next_cursor - call again with cursor=pagination.next_cursor while has_more is ' +
+      'true. Set recent=true for the fast recent feed (a ~2h window by default). Ordering is newest-first (order="desc"); ' +
       'ascending order is unsupported because it corrupts the upstream cursor - reverse client-side if you need oldest-first.',
     inputSchema: {
       recent: z
         .boolean()
         .default(false)
-        .describe('Use the cached last-24h feed (faster) instead of full history.'),
+        .describe('Use the recent feed (default ~2h window, faster) instead of full history.'),
       coin: coinSchema.optional().describe('Filter by asset symbol.'),
       user: addressSchema
         .optional()
         .describe(
           'Restrict to liquidations of one trader (the liquidated_user). Omit for the market-wide feed.',
         ),
+      amount_dollars: z
+        .number()
+        .min(0)
+        .optional()
+        .describe('Only liquidations with notional_total >= this USD amount.'),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
-      limit: limitSchema(100),
+      limit: limitSchema(1000),
       cursor: cursorSchema,
       order: z
         .enum(['desc'])
@@ -65,6 +70,7 @@ export const liquidationsTools: ToolModule = [
       let query: Query = { limit: args.limit, order: args.order }
       if (args.coin !== undefined) query.coin = args.coin
       if (args.user !== undefined) query.user = args.user
+      if (args.amount_dollars !== undefined) query.amount_dollars = args.amount_dollars
       if (args.cursor !== undefined) query.cursor = args.cursor
       query = buildTimeQuery(query, {
         start: args.start_time,
@@ -86,7 +92,7 @@ export const liquidationsTools: ToolModule = [
       return buildResult(
         { data: page.data, pagination, meta },
         {
-          summary: `Liquidations${args.coin ? ` for ${args.coin}` : ''}${args.user ? ` of ${args.user}` : ''}${args.recent ? ' (last 24h)' : ''}.`,
+          summary: `Liquidations${args.coin ? ` for ${args.coin}` : ''}${args.user ? ` of ${args.user}` : ''}${args.recent ? ' (recent feed)' : ''}.`,
           maxTokens: ctx.config.maxResponseTokens,
         },
       )

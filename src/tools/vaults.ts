@@ -83,7 +83,7 @@ export const vaultsTools: ToolModule = [
       'lockupDurationSeconds, allowDeposits, followerCount, snapshotTime, createTime, plus a `portfolio` ' +
       'array. Note: that `portfolio` array is actually the leader commission history (time-series of ' +
       "followerCount + leaderCommission), NOT the vault's asset holdings. Optional start_time/end_time " +
-      'narrow the commission-history window. Returns a single object (not paginated). Passing the zero ' +
+      'narrow the commission-history window and `limit` (1-5000, default 500) caps its length. Returns a single object (not paginated). Passing the zero ' +
       'address (0x000...000) yields a 404 "not found". Find a vaultAddress with hd_vaults_list.',
     inputSchema: {
       vault_address: addressSchema.describe(
@@ -91,10 +91,18 @@ export const vaultsTools: ToolModule = [
       ),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(5000)
+        .optional()
+        .describe('Max portfolio (commission-history) rows, 1-5000 (default 500).'),
     },
     async handler(args, ctx) {
       const hd = requireHd(ctx)
       let query: Query = { vaultAddress: args.vault_address }
+      if (args.limit !== undefined) query.limit = args.limit
       query = buildTimeQuery(query, {
         start: args.start_time,
         end: args.end_time,

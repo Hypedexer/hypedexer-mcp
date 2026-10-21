@@ -1,5 +1,6 @@
 import type { Query } from '../hypedexer/client.js'
 import { requireHd } from './context.js'
+import { requireField } from './shared/errors.js'
 import { buildResult, rawResult } from './shared/output.js'
 import { offsetPagination } from './shared/pagination.js'
 import { addressSchema, limitSchema, offsetSchema, viewSchema, z } from './shared/schemas.js'
@@ -8,10 +9,11 @@ import { type ToolModule, defineTool } from './types.js'
 /**
  * Builder-code analytics (HypeDexer Data API, `APIResponse` envelope).
  *
- * Three tools cover the six `/builders/*` endpoints:
+ * Three tools cover the seven `/builders/*` endpoints:
  *   hd_builders        -> /builders/top (leaderboard) + /builders/list (registry)
  *   hd_builder_stats   -> /builders/stats, /stats/all-timeframes, /{addr}/stats
  *   hd_builder_users   -> /builders/{addr}/users (top users per builder)
+ *                         + POST /builders/{addr}/external-activity
  *
  * Quirk handled here: `/builders/top` and `/builders/{addr}/users` ship their
  * list inside an object (`data: {timeframe, sort, builders[]}` /
@@ -185,33 +187,59 @@ export const buildersTools: ToolModule = [
   defineTool({
     name: 'hd_builder_users',
     group: 'builders',
-    title: 'Builder top users',
+    title: 'Builder users: top users and their external activity',
     description:
-      'Top trading users routed through a specific builder code, for a timeframe. Requires the builder ' +
-      'address. Each row carries the user address with fillCount/totalVolume/totalFees/totalBuilderFees/uniqueCoins. ' +
-      'Offset-paginated: page with limit + offset via pagination.next_offset.',
+      'Users of one builder code (`address` = the builder), by `view`:\n' +
+      '- "top" (default): top trading users routed through the builder for a timeframe (default 24h), ranked by ' +
+      'builder fees; each row has user, fillCount, totalVolume, totalFees, totalBuilderFees, uniqueCoins. One page ' +
+      'of up to 100 rows (the endpoint has no offset).\n' +
+      '- "external_activity": for up to 500 wallets (`users`), the fills each one sent through OTHER builder codes ' +
+      '(externalBuilders[]), with no builder code (noBuilder, unless include_no_builder=false) and through this ' +
+      'builder (own), plus a summary; flagged wallets first, sorted by external volume. timeframe default 7d. ' +
+      'Builder attribution starts 2025-10-10. Costs 3 credits per wallet.',
     inputSchema: {
-      address: addressSchema.describe(
-        'Builder address whose top users to list, 0x-prefixed 40 hex chars.',
-      ),
+      address: addressSchema.describe('The builder address, 0x-prefixed 40 hex chars.'),
+      view: viewSchema(['top', 'external_activity'], 'Which builder-user view.', 'top'),
       timeframe: timeframeField,
-      limit: limitSchema(1000),
-      offset: offsetSchema,
+      limit: limitSchema(100),
+      users: z
+        .array(addressSchema)
+        .min(1)
+        .max(500)
+        .optional()
+        .describe('view="external_activity" (required): 1 to 500 wallets to check.'),
+      include_no_builder: z
+        .boolean()
+        .optional()
+        .describe(
+          'view="external_activity": also report fills with no builder code (default true).',
+        ),
     },
     async handler(args, ctx) {
       const hd = requireHd(ctx)
-      const query: Query = { limit: args.limit, offset: args.offset }
+      if (args.view === 'external_activity') {
+        const users = requireField(args.users, 'users', 'view="external_activity"')
+        const body: Record<string, unknown> = { users }
+        if (args.timeframe !== undefined) body.timeframe = args.timeframe
+        if (args.include_no_builder !== undefined) body.includeNoBuilder = args.include_no_builder
+        const raw = await hd.post<{ data?: unknown }>(
+          `/builders/${args.address}/external-activity`,
+          body,
+        )
+        return rawResult(
+          raw?.data ?? raw,
+          `External builder activity of ${users.length} wallet(s) for builder ${args.address}.`,
+          { maxTokens: ctx.config.maxResponseTokens },
+        )
+      }
+
+      const query: Query = { limit: args.limit }
       if (args.timeframe !== undefined) query.timeframe = args.timeframe
 
       const path = `/builders/${args.address}/users`
       const single = await hd.getApiSingle<BuilderUsersData>(path, query)
       const users = single.data.users
       const rows = Array.isArray(users) ? users : []
-      const pagination = offsetPagination(
-        { data: rows, meta: single.meta },
-        args.offset,
-        args.limit,
-      )
 
       const meta: Record<string, unknown> = { source: path }
       if (single.data.timeframe != null) meta.timeframe = single.data.timeframe
@@ -219,7 +247,7 @@ export const buildersTools: ToolModule = [
       if (single.meta.executionMs != null) meta.execution_ms = single.meta.executionMs
 
       return buildResult(
-        { data: rows, pagination, meta },
+        { data: rows, meta },
         {
           summary: `Top users for builder ${args.address}.`,
           maxTokens: ctx.config.maxResponseTokens,

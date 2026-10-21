@@ -26,8 +26,8 @@ export const twapsTools: ToolModule = [
       'List TWAP (time-weighted average price) orders on Hyperliquid. Omit `address` for the ' +
       'market-wide feed (GET /twaps/, page size up to 500); pass an `address` to scope to one ' +
       'trader (GET /twaps/user/{address}, page size up to 200, and each row adds an `executionPct` ' +
-      'progress field). On the market-wide feed you can narrow server-side with `coin`, `status`, ' +
-      '`hours`, and `order` (these filters are ignored when `address` is set). Offset-paginated: page ' +
+      'progress field). Both paths narrow server-side with `coin`, `status`, `hours` (TWAPs started in the last ' +
+      'N hours, max 720) and `order` (ASC|DESC by start time). Offset-paginated: page ' +
       'with pagination.next_offset. Returns each TWAP order with its coin, side, size, status, and ' +
       'start time. Use hd_twap_detail for a single order plus its sub-order fills.',
     inputSchema: {
@@ -36,32 +36,19 @@ export const twapsTools: ToolModule = [
         .describe(
           'Restrict to one trader (caps page size at 200 and adds `executionPct`). Omit for the market-wide feed.',
         ),
-      coin: coinSchema
-        .optional()
-        .describe(
-          'Filter the market-wide feed to one coin (e.g. "BTC"). Server-side filter for GET /twaps/ only; ignored when `address` is set.',
-        ),
+      coin: coinSchema.optional().describe('Filter to one coin (e.g. "BTC"), case-insensitive.'),
       status: z
         .enum(['activated', 'finished', 'terminated', 'all'])
         .optional()
-        .describe(
-          'Filter the market-wide feed by TWAP status. GET /twaps/ only; ignored when `address` is set.',
-        ),
+        .describe('Filter by TWAP status (default all).'),
       hours: z
         .number()
         .int()
-        .positive()
+        .min(1)
+        .max(720)
         .optional()
-        .describe(
-          'Restrict the market-wide feed to TWAPs from the last N hours. GET /twaps/ only; ignored when `address` is set.',
-        ),
-      order: z
-        .string()
-        .trim()
-        .optional()
-        .describe(
-          'Sort order for the market-wide feed (GET /twaps/ only; ignored when `address` is set).',
-        ),
+        .describe('Only TWAPs started in the last N hours (1-720).'),
+      order: z.enum(['ASC', 'DESC']).optional().describe('Sort by start time (default DESC).'),
       limit: limitSchema(500),
       offset: offsetSchema,
     },
@@ -72,13 +59,10 @@ export const twapsTools: ToolModule = [
       const path = args.address ? `/twaps/user/${args.address}` : '/twaps/'
 
       const query: Query = { limit, offset: args.offset }
-      // Server-side filters only apply to the market-wide feed (GET /twaps/), not the per-user path.
-      if (!args.address) {
-        if (args.coin != null) query.coin = args.coin
-        if (args.status != null) query.status = args.status
-        if (args.hours != null) query.hours = args.hours
-        if (args.order != null) query.order = args.order
-      }
+      if (args.coin != null) query.coin = args.coin
+      if (args.status != null) query.status = args.status
+      if (args.hours != null) query.hours = args.hours
+      if (args.order != null) query.order = args.order
       const page = await hd.getApiList<unknown>(path, query)
       const pagination = offsetPagination(page, args.offset, limit)
 
@@ -159,6 +143,12 @@ export const twapsTools: ToolModule = [
         .boolean()
         .default(false)
         .describe("Also fetch and merge the TWAP's executed sub-order fills."),
+      order: z
+        .enum(['ASC', 'DESC'])
+        .optional()
+        .describe(
+          'include_fills only: fills by time, oldest first (ASC, default) or newest first.',
+        ),
       limit: limitSchema(1000),
       offset: offsetSchema,
     },
@@ -171,6 +161,7 @@ export const twapsTools: ToolModule = [
       }
 
       const query: Query = { limit: args.limit, offset: args.offset }
+      if (args.order !== undefined) query.order = args.order
       const fillsPage = await hd.getApiList<unknown>(`/twaps/${args.twap_id}/fills`, query)
       const pagination = offsetPagination(fillsPage, args.offset, args.limit)
 

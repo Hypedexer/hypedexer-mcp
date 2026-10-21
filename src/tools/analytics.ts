@@ -31,7 +31,9 @@ export const analyticsTools: ToolModule = [
       'total volume, total fees, builder fees, and counts of unique users and coins, plus the ' +
       'covered time_range. Use it for a one-shot "how busy is the exchange" snapshot rather than ' +
       'fetching individual fills. Set hours (1-168, default 1) to widen the window, and coin to ' +
-      'scope to a single asset (the coin is echoed back in the result). Returns a single object.',
+      'scope to a single asset, including spot handles like "@307" (the coin is echoed back). The window is ' +
+      'always the last `hours` (max 168 = 7 days; the documented start_time/end_time are ignored upstream), so ' +
+      'for all-time or older per-coin volume use hd_candles. Returns a single object.',
     inputSchema: {
       coin: coinSchema.optional().describe('Scope stats to one asset; echoed back in the result.'),
       hours: z
@@ -59,9 +61,10 @@ export const analyticsTools: ToolModule = [
     description:
       'Priority-fee (gas tip) economics, in three views selected by `view`:\n' +
       '- "stats" (default): a single rollup over a recent window - fills paying priority, total/avg/min/max ' +
-      'priority gas, and unique payers. Set hours (1-168, default 1).\n' +
+      'priority gas, and unique payers. Set hours (1-168, default 1) and optionally coin.\n' +
       '- "daily": a time series of per-day priority-fee totals (fills, fillsWithFee, totalGas, uniqueUsers). ' +
-      'Defaults to a ~29-day lookback; narrow it with start_time/end_time. Returned as a list.\n' +
+      'Narrow it with start_time/end_time. Returned as a list (live on 2026-10-21 the series ended on ' +
+      '2026-07-11).\n' +
       '- "leaderboard": top gossip nodes ranked by priority gas contributed (totalGas, count, daysActive). ' +
       'Each row is keyed by node, not by wallet - the node IPv4 is surfaced as `nodeIp`. Use limit (1-200) to cap rows.\n' +
       'These views return everything in one call (no pagination).',
@@ -78,6 +81,7 @@ export const analyticsTools: ToolModule = [
         .max(168)
         .optional()
         .describe('view="stats" only: lookback window in hours (1-168, default 1).'),
+      coin: coinSchema.optional().describe('view="stats" only: scope to one coin.'),
       start_time: startTimeSchema,
       end_time: endTimeSchema,
       limit: limitSchema(200),
@@ -88,6 +92,7 @@ export const analyticsTools: ToolModule = [
       if (args.view === 'stats') {
         const query: Query = {}
         if (args.hours !== undefined) query.hours = args.hours
+        if (args.coin !== undefined) query.coin = args.coin
         const { data } = await hd.getApiSingle<unknown>('/analytics/priority-fees/stats', query)
         return rawResult(data, 'Priority-fee stats (network-wide).')
       }
@@ -109,7 +114,7 @@ export const analyticsTools: ToolModule = [
         return buildResult(
           { data: page.data, meta },
           {
-            summary: 'Daily priority-fee chart (~29-day default lookback).',
+            summary: 'Daily priority-fee chart.',
             maxTokens: ctx.config.maxResponseTokens,
           },
         )
