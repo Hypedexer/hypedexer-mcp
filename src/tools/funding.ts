@@ -1,7 +1,12 @@
 import type { Query } from '../hypedexer/client.js'
 import { requireHd } from './context.js'
 import { buildResult } from './shared/output.js'
-import { buildTimeQuery, timeWindowPagination } from './shared/pagination.js'
+import {
+  buildTimeQuery,
+  epochAt,
+  settlementSafePage,
+  timeWindowPagination,
+} from './shared/pagination.js'
 import {
   addressSchema,
   coinSchema,
@@ -89,11 +94,13 @@ export const fundingTools: ToolModule = [
     group: 'funding',
     title: 'User funding payments',
     description:
-      "A wallet's perp funding payments and receipts over an optional time window. `user` (a wallet " +
-      'address) is required. Rows carry an epoch-ms `time`. Time-window paginated: results run ' +
-      'newest-first, and pagination.next_end_time is the cursor - call again with ' +
-      'end_time=pagination.next_end_time to fetch older records. Note: this endpoint is frequently ' +
-      'empty for many users, so an empty result does not necessarily indicate an error.',
+      "A wallet's hourly perp funding payments (usdc positive = received, negative = paid) over an " +
+      'optional time window. `user` (a wallet address) is required. Rows carry an epoch-ms `time`; all ' +
+      'payments of one settlement share it. Newest settlement first, then coin A-Z. Time-window ' +
+      'paginated: when a page is full, the rows of its oldest settlement are held back and ' +
+      'pagination.next_end_time points at that settlement, so call again with ' +
+      'end_time=pagination.next_end_time to continue without gaps or duplicates. Coverage is complete ' +
+      'from 2025-09-27 10:00 UTC; an earlier window returns an empty list.',
     inputSchema: {
       user: addressSchema,
       start_time: startTimeSchema,
@@ -112,18 +119,20 @@ export const fundingTools: ToolModule = [
       })
 
       const page = await hd.getBareList<unknown>('/funding/userFunding', query)
-      const pagination = timeWindowPagination(page, 'time')
+      const { rows, pagination } = settlementSafePage(page.data, args.limit, (r) =>
+        epochAt(r, 'time'),
+      )
 
       const notes: string[] = []
       if (page.data.length === 0) {
         notes.push(
-          'No funding records returned. This endpoint is frequently empty for many users; ' +
-            'this is not necessarily an error.',
+          'No funding records returned: the wallet held no perp position in the window, or the ' +
+            'window is before 2025-09-27 10:00 UTC (start of coverage).',
         )
       }
 
       return buildResult(
-        { data: page.data, pagination, meta: { source: '/funding/userFunding' }, notes },
+        { data: rows, pagination, meta: { source: '/funding/userFunding' }, notes },
         {
           summary: `Funding payments for ${args.user}.`,
           maxTokens: ctx.config.maxResponseTokens,
