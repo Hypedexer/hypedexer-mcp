@@ -224,6 +224,73 @@ describe('http transport apikey mode (hosted multi-tenant)', () => {
     expect(ok.status).toBe(200)
   })
 
+  it('accepts the key in the URL (?key= / ?api_key=) when keyless requests are refused', async () => {
+    handle = await startHttp(testConfig({ ...apikeyEnv, HYPEDEXER_MCP_REQUIRE_KEY: '1' }), logger)
+    const viaKey = await raw(handle.port, {
+      path: '/mcp?key=hd_test_1234567890',
+      body: initializeBody,
+    })
+    expect(viaKey.status).toBe(200)
+    const viaAlias = await raw(handle.port, {
+      path: '/mcp?api_key=hd_test_1234567890',
+      body: initializeBody,
+    })
+    expect(viaAlias.status).toBe(200)
+  })
+
+  it('rejects a malformed URL key with 401', async () => {
+    handle = await startHttp(testConfig(apikeyEnv), logger)
+    const res = await raw(handle.port, { path: '/mcp?key=not%20a%20key', body: initializeBody })
+    expect(res.status).toBe(401)
+    expect(res.text).toContain('?key=')
+  })
+
+  it('forwards a URL key upstream, and the bearer header wins over it', async () => {
+    handle = await startHttp(testConfig(apikeyEnv), logger)
+    const captured: string[] = []
+    const realFetch = globalThis.fetch
+    globalThis.fetch = (async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url.startsWith('https://api.test.local')) {
+        captured.push((init?.headers as Record<string, string>)['X-API-Key'] ?? '')
+        return new Response(JSON.stringify({ success: true, data: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      return realFetch(input, init)
+    }) as typeof fetch
+    const callWith = async (url: string, headers?: Record<string, string>): Promise<void> => {
+      const transport = new StreamableHTTPClientTransport(new URL(url), {
+        requestInit: headers ? { headers } : {},
+      })
+      const client = new Client({ name: 'test-url-key', version: '0.0.0' })
+      try {
+        await client.connect(transport)
+        const { tools } = await client.listTools()
+        expect(tools.map((t) => t.name)).toContain('hd_market_snapshot_24h')
+        await client.callTool({ name: 'hd_market_snapshot_24h', arguments: {} })
+      } finally {
+        await client.close()
+      }
+    }
+    try {
+      await callWith(`http://127.0.0.1:${handle.port}/mcp?key=hd_url_1234567890`)
+      expect(new Set(captured)).toEqual(new Set(['hd_url_1234567890']))
+      captured.length = 0
+      await callWith(`http://127.0.0.1:${handle.port}/mcp?key=hd_url_1234567890`, {
+        authorization: 'Bearer hd_header_1234567890',
+      })
+      expect(new Set(captured)).toEqual(new Set(['hd_header_1234567890']))
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
   it('registers keyed tools for a bearer key and forwards it with metering headers', async () => {
     handle = await startHttp(testConfig(apikeyEnv), logger)
     const captured: Array<{ url: string; headers: Record<string, string> }> = []

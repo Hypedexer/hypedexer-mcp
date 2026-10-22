@@ -55,6 +55,26 @@ function hostHeaderName(host: string): string {
   return (host.split(':')[0] ?? host).toLowerCase()
 }
 
+/** Query parameters that may carry the API key in apikey auth mode. */
+const URL_KEY_PARAMS = ['key', 'api_key'] as const
+
+/** API key passed in the URL (`?key=` or `?api_key=`), if any. */
+function urlKey(req: Request): string | undefined {
+  const url = new URL(req.url, 'http://localhost')
+  for (const name of URL_KEY_PARAMS) {
+    const value = url.searchParams.get(name)
+    if (value !== null && value !== '') return value
+  }
+  return undefined
+}
+
+/** Drop the key parameters from req.url so the MCP handler never sees them. */
+function stripUrlKey(req: Request): void {
+  const url = new URL(req.url, 'http://localhost')
+  for (const name of URL_KEY_PARAMS) url.searchParams.delete(name)
+  req.url = url.pathname + url.search
+}
+
 function rpcError(res: Response, status: number, message: string): void {
   res.status(status).json({
     jsonrpc: '2.0',
@@ -123,16 +143,27 @@ export async function startHttp(config: Config, logger: Logger): Promise<HttpHan
   // per-request context. No constant-time compare: the value is an opaque
   // pass-through and the edge is the validator. A missing bearer is allowed
   // and serves the keyless public tools; a malformed one gets a clean 401.
+  //
+  // The key may also ride in the URL (`/mcp?key=<key>`, alias `api_key`) for
+  // clients that cannot set headers: claude.ai connectors only speak OAuth or
+  // no auth, so a static bearer is out of reach there. The header wins when
+  // both are present, and the key is stripped from req.url before the MCP
+  // handler runs so nothing downstream ever sees it.
   const guardApiKey = (req: Request, res: Response, next: NextFunction): void => {
     const header = req.headers.authorization
-    const provided = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined
+    let provided = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined
+    const fromUrl = urlKey(req)
+    if (fromUrl !== undefined) {
+      stripUrlKey(req)
+      provided ??= fromUrl
+    }
     if (provided === undefined) {
       if (config.requireKey) {
         res.setHeader('WWW-Authenticate', 'Bearer')
         rpcError(
           res,
           401,
-          'Unauthorized: send your HypeDexer API key as "Authorization: Bearer <key>". Get one at https://www.app.hypedexer.com/.',
+          'Unauthorized: send your HypeDexer API key as "Authorization: Bearer <key>" or in the URL as "/mcp?key=<key>". Get one at https://www.app.hypedexer.com/.',
         )
         return
       }
@@ -144,7 +175,7 @@ export async function startHttp(config: Config, logger: Logger): Promise<HttpHan
       rpcError(
         res,
         401,
-        'Unauthorized: the bearer must be a HypeDexer API key (get one at https://www.app.hypedexer.com/), or be omitted for keyless public tools.',
+        'Unauthorized: the bearer or ?key= must be a HypeDexer API key (get one at https://www.app.hypedexer.com/), or be omitted for keyless public tools.',
       )
       return
     }

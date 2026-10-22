@@ -15,6 +15,11 @@ Hosted multi-tenant HTTP mode, groundwork for mcp.hypedexer.com and MCP plans.
 - `HYPEDEXER_MCP_REQUIRE_KEY=1` (apikey mode): refuse keyless requests with 401
   instead of serving the keyless tools, for a hosted deployment whose free tier
   is a quota'd key rather than anonymous access.
+- apikey mode also accepts the key in the URL, `/mcp?key=<key>` (alias
+  `api_key`), for clients that cannot send an `Authorization` header: claude.ai
+  connectors only do OAuth or no auth, so with `HYPEDEXER_MCP_REQUIRE_KEY=1`
+  they failed at OAuth client registration. The header wins when both are
+  present; the key is stripped from the URL before the MCP handler.
 - `HypedexerClientOptions.defaultHeaders` pass-through to the vendored
   `HttpClient`.
 

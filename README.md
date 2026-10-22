@@ -109,7 +109,12 @@ HYPEDEXER_API_KEY=… HYPEDEXER_MCP_TRANSPORT=http HYPEDEXER_MCP_HTTP_TOKEN=… 
 For the multi-tenant hosted deployment, set `HYPEDEXER_MCP_AUTH_MODE=apikey`: each
 request's `Authorization: Bearer <key>` is then the caller's own HypeDexer API key,
 forwarded upstream as `X-API-Key` so plans and credits are enforced per caller,
-exactly as for direct REST calls. Requests without a bearer get the keyless
+exactly as for direct REST calls. Clients that cannot set headers (claude.ai
+connectors, which only speak OAuth or no auth) can pass the key in the URL
+instead: `https://mcp.hypedexer.com/mcp?key=<key>` (alias `api_key`). The
+header wins when both are present, and the key is stripped from the URL before
+the MCP handler runs; mind that a key in a URL can end up in browser history and
+in proxy logs. Requests without a key get the keyless
 `hl_public_*` tools only, or a 401 when `HYPEDEXER_MCP_REQUIRE_KEY=1`. Two metering headers ride every upstream request:
 `X-MCP-Call` (one UUID per tool call, however many REST requests it fans out
 into) and `X-MCP-Server` (the shared secret from
