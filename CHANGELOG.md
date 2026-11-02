@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.2.0 (2026-11-02)
 
 Catch-up with the API of late October (live-verified 2026-11-02). Surface: 99
 tools with `all,info,rpc`.
