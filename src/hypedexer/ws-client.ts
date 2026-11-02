@@ -30,6 +30,7 @@ export const LIVE_CHANNELS = [
   'setOracleUpdates',
   'allTwapStatusUpdates',
   'orderUpdates',
+  'orderCompletions',
   'userEvents',
   'userFundings',
   'userNonFundingLedgerUpdates',

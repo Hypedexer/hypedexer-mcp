@@ -110,6 +110,42 @@ describe('hd_live_feed', () => {
   })
 })
 
+describe('builder filters and orderCompletions', () => {
+  it('allFills forwards builder', async () => {
+    const fake = installFakeSocket([{ channel: 'allFills', data: { fills: [] } }])
+    await run(liveTools, 'hd_live_all_fills', { builder: A, seconds: 1 }, [])
+    expect(fake.sent[0]?.subscription).toEqual({ type: 'allFills', builder: A })
+  })
+
+  it('orderUpdates takes builder in place of user', async () => {
+    const fake = installFakeSocket([{ channel: 'orderUpdates', data: [] }])
+    const { res } = await run(
+      liveTools,
+      'hd_live_feed',
+      { channel: 'orderUpdates', builder: A, seconds: 1 },
+      [],
+    )
+    expect(res.isError).toBeUndefined()
+    expect(fake.sent[0]?.subscription).toEqual({ type: 'orderUpdates', builder: A })
+  })
+
+  it('orderCompletions sends users and builder, or nothing for the full stream', async () => {
+    const fake = installFakeSocket([{ channel: 'orderCompletions', data: [{ status: 'filled' }] }])
+    const { sc } = await run(
+      liveTools,
+      'hd_live_feed',
+      { channel: 'orderCompletions', users: [A], builder: A, seconds: 1 },
+      [],
+    )
+    expect(fake.sent[0]?.subscription).toEqual({ type: 'orderCompletions', users: [A], builder: A })
+    expect(sc.data).toEqual([[{ status: 'filled' }]])
+
+    const all = installFakeSocket([])
+    await run(liveTools, 'hd_live_feed', { channel: 'orderCompletions', seconds: 1 }, [])
+    expect(all.sent[0]?.subscription).toEqual({ type: 'orderCompletions' })
+  })
+})
+
 describe('hd_live_all_mids', () => {
   it('forwards dex', async () => {
     const fake = installFakeSocket([{ channel: 'allMids', data: { mids: {} } }])

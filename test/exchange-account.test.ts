@@ -371,3 +371,53 @@ describe('hd_account_history', () => {
     expect(sc.data).toHaveLength(1)
   })
 })
+
+describe('hd_order_completions', () => {
+  it('completions forwards users, builder and the cursor, and pages on the headers', async () => {
+    const { calls, sc } = await run(
+      accountTools,
+      'hd_order_completions',
+      { view: 'completions', start_time: '1', end_time: '2', users: [A], builder: B, cursor: '5' },
+      [
+        {
+          match: '/info',
+          json: [{ status: 'filled' }],
+          headers: { 'x-has-more': 'true', 'x-next-cursor': '1793611111619' },
+        },
+      ],
+    )
+    expect(calls[0]?.body).toEqual({
+      type: 'orderCompletions',
+      startTime: 1,
+      endTime: 2,
+      users: [A],
+      builder: B,
+      cursor: '5',
+    })
+    expect(sc.pagination).toMatchObject({ has_more: true, next_cursor: '1793611111619' })
+  })
+
+  it('builder_order_updates requires builder and drops users', async () => {
+    const missing = await run(
+      accountTools,
+      'hd_order_completions',
+      { view: 'builder_order_updates', start_time: '1' },
+      [],
+    )
+    expect(missing.res.isError).toBe(true)
+    expect(missing.calls).toHaveLength(0)
+
+    const { calls } = await run(
+      accountTools,
+      'hd_order_completions',
+      { view: 'builder_order_updates', start_time: '1', builder: B, users: [A] },
+      [{ match: '/info', json: [] }],
+    )
+    expect(calls[0]?.body).toEqual({ type: 'builderOrderUpdates', startTime: 1, builder: B })
+  })
+
+  it('start_time is required', async () => {
+    const r = await run(accountTools, 'hd_order_completions', { view: 'completions' }, [])
+    expect(r.res.isError).toBe(true)
+  })
+})

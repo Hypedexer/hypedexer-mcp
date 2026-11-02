@@ -120,10 +120,18 @@ export const liveTools: ToolModule = [
       'Live mirror channel `allFills`: every perp fill on Hyperliquid, globally - the firehose. Opens ' +
       'wss://.../ws?mode=mirror, subscribes, and collects fills for a bounded window. High volume on ' +
       'busy markets, so it usually fills `max_items` fast. Point-in-time snapshot; call again for a ' +
-      'fresh window. For one wallet use hd_live_user_fills.',
-    inputSchema: { seconds: secondsSchema, max_items: maxItemsSchema },
+      'fresh window. `builder` keeps only the fills placed with that builder code (the only filter this ' +
+      'channel applies). Perp fills carry `leverage` {type, value} from 2026-10-22. For one wallet use ' +
+      'hd_live_user_fills.',
+    inputSchema: {
+      builder: addressSchema.optional().describe('Only the fills placed with this builder code.'),
+      seconds: secondsSchema,
+      max_items: maxItemsSchema,
+    },
     async handler(args, ctx) {
-      return collectLive('allFills', args, ctx, 'fill')
+      const live: LiveArgs = { seconds: args.seconds, max_items: args.max_items }
+      if (args.builder !== undefined) live.extra = { builder: args.builder }
+      return collectLive('allFills', live, ctx, 'fill')
     },
   }),
 
@@ -272,7 +280,10 @@ export const liveTools: ToolModule = [
       '- activeAssetCtx (coin): mark, oracle, mid, funding, open interest, 24h volumes for one coin.\n' +
       '- fundingRates: current funding rate per coin. setOracleUpdates: oracle price sets (HIP-3 dexs included).\n' +
       '- allTwapStatusUpdates: TWAP status events for all users (snapshot then updates).\n' +
-      '- orderUpdates (user): order status changes. userEvents (user): liquidations and one frame per funding ' +
+      '- orderUpdates (user, or builder for every order placed with that builder code, with fills): order ' +
+      'status changes. orderCompletions (optional users and/or builder, a union): one event per order or TWAP ' +
+      'that ended after being executed, across all of Hyperliquid unless filtered (about 60-100 events/s); ' +
+      'for a past window use hd_order_completions. userEvents (user): liquidations and one frame per funding ' +
       'payment (can be silent for a while). userFundings (user): the 100 most recent funding payments, then ' +
       'one frame per hourly settlement. userNonFundingLedgerUpdates (user): the 100 most recent ledger entries, ' +
       'then new ones.\n' +
@@ -287,6 +298,7 @@ export const liveTools: ToolModule = [
           'setOracleUpdates',
           'allTwapStatusUpdates',
           'orderUpdates',
+          'orderCompletions',
           'userEvents',
           'userFundings',
           'userNonFundingLedgerUpdates',
@@ -296,8 +308,19 @@ export const liveTools: ToolModule = [
       user: addressSchema
         .optional()
         .describe(
-          'orderUpdates, userEvents, userFundings, userNonFundingLedgerUpdates (required there).',
+          'orderUpdates (or builder), userEvents, userFundings, userNonFundingLedgerUpdates (required there).',
         ),
+      users: z
+        .array(addressSchema)
+        .min(1)
+        .max(1000)
+        .optional()
+        .describe(
+          'orderCompletions only: wallets to follow (this tool caps at 1000; upstream takes 20,000).',
+        ),
+      builder: addressSchema
+        .optional()
+        .describe('orderUpdates (instead of user) and orderCompletions: a builder code.'),
       interval: z
         .enum(['5s', '30s', '1m', '5m', '15m', '30m', '1h', '4h', '1d'])
         .optional()
@@ -307,17 +330,23 @@ export const liveTools: ToolModule = [
     },
     async handler(args, ctx) {
       const needsCoin = args.channel === 'candle' || args.channel === 'activeAssetCtx'
-      const needsUser = [
-        'orderUpdates',
-        'userEvents',
-        'userFundings',
-        'userNonFundingLedgerUpdates',
-      ].includes(args.channel)
+      const builderOrders = args.channel === 'orderUpdates' && args.builder !== undefined
+      const needsUser =
+        !builderOrders &&
+        ['orderUpdates', 'userEvents', 'userFundings', 'userNonFundingLedgerUpdates'].includes(
+          args.channel,
+        )
       const live: LiveArgs = { seconds: args.seconds, max_items: args.max_items }
       if (needsCoin) live.coin = requireField(args.coin, 'coin', `channel=${args.channel}`)
       if (needsUser) live.user = requireField(args.user, 'user', `channel=${args.channel}`)
       if (args.channel === 'candle' || args.channel === 'allCandles')
         live.extra = { interval: args.interval ?? '1m' }
+      if (builderOrders) live.extra = { builder: args.builder }
+      if (args.channel === 'orderCompletions') {
+        live.extra = {}
+        if (args.users !== undefined) live.extra.users = args.users
+        if (args.builder !== undefined) live.extra.builder = args.builder
+      }
       return collectLive(args.channel, live, ctx, args.channel)
     },
   }),

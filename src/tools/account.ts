@@ -27,6 +27,8 @@ import { type ToolModule, defineTool } from './types.js'
  *                         delegations, activeAssetData (coin), userVaultEquities, webData2
  *   hd_account_history -> indexed history: historicalOrders (header-paged window mode),
  *                         orderStatus, userNonFundingLedgerUpdates, userTwapSliceFills
+ *   hd_order_completions -> orderCompletions (users[] / builder) and builderOrderUpdates,
+ *                         header-paged, ascending time (live-verified 2026-11-02)
  *
  * Live shapes differ from the doc in places: userAbstraction answers a bare string,
  * userDexAbstraction a bare boolean, extraAgents objects {name, address, validUntil},
@@ -256,6 +258,87 @@ export const accountTools: ToolModule = [
         { data: rows, pagination, meta: { source: `POST /info ${String(body.type)}` }, notes },
         {
           summary: `${args.view === 'ledger' ? 'Non-funding ledger' : 'TWAP slice fills'} for ${user}.`,
+          maxTokens: ctx.config.maxResponseTokens,
+        },
+      )
+    },
+  }),
+
+  defineTool({
+    name: 'hd_order_completions',
+    group: 'account',
+    title: 'Completed orders and builder order updates (REST catch-up)',
+    description:
+      'Paged, time-ordered (ascending) order events over HypeDexer POST /info, the REST counterpart of the ' +
+      'orderCompletions and orderUpdates-by-builder WebSocket channels. One `view`:\n' +
+      '- completions (orderCompletions): every order that ended after being executed (filled, or a final status ' +
+      'after a partial fill, `sz` then the unfilled size) and every TWAP end that executed something (twapId, ' +
+      'executedSz, executedNtl), across all of Hyperliquid unless filtered. Optional `users` and/or `builder` ' +
+      '(a union). Rows: order, status, statusTimestamp, user, builder ({b, f} or null), fills (the 30 s before ' +
+      'the end). Coverage from 2026-10-27 20:00 UTC, 90 days retained.\n' +
+      '- builder_order_updates (builderOrderUpdates, builder required): every status change of the orders placed ' +
+      'with that builder code, with their fills. Coverage from 2026-10-26, 90 days retained.\n' +
+      'start_time is required. Page with cursor=pagination.next_cursor and the same window and filters. Fills of ' +
+      'the last minute may not be attached yet: for live data use hd_live_feed.',
+    inputSchema: {
+      view: viewSchema(['completions', 'builder_order_updates'], 'Which event stream.'),
+      start_time: startTimeSchema.describe(
+        'Window start (required), ISO-8601 or epoch-ms, on statusTimestamp.',
+      ),
+      end_time: endTimeSchema.describe('Window end, ISO-8601 or epoch-ms (default now).'),
+      users: z
+        .array(addressSchema)
+        .min(1)
+        .max(1000)
+        .optional()
+        .describe(
+          'view=completions: only these wallets (this tool caps at 1000; upstream takes 20,000).',
+        ),
+      builder: addressSchema
+        .optional()
+        .describe('A builder code. Required for builder_order_updates; a filter for completions.'),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(5000)
+        .optional()
+        .describe('Entries per page (1-5000, upstream default 2000).'),
+      cursor: cursorSchema.describe('pagination.next_cursor from the previous page.'),
+    },
+    async handler(args, ctx) {
+      const hd = requireHd(ctx)
+      const start = requireField(args.start_time, 'start_time', `view=${args.view}`)
+      const body: Record<string, unknown> = {
+        type: args.view === 'completions' ? 'orderCompletions' : 'builderOrderUpdates',
+        startTime: encodeTime(start, 'epochCamel'),
+      }
+      if (args.end_time) body.endTime = encodeTime(args.end_time, 'epochCamel')
+      if (args.view === 'builder_order_updates') {
+        body.builder = requireField(args.builder, 'builder', 'view=builder_order_updates')
+      } else {
+        if (args.users !== undefined) body.users = args.users
+        if (args.builder !== undefined) body.builder = args.builder
+      }
+      if (args.limit !== undefined) body.limit = args.limit
+      if (args.cursor !== undefined) body.cursor = args.cursor
+      const { data, headers } = await hd.postWithHeaders<unknown>('/info', body)
+      const rows = Array.isArray(data) ? data : []
+      const hasMore = headers.get('x-has-more') === 'true'
+      const next = headers.get('x-next-cursor')
+      const pagination: PaginationOut = { returned: rows.length, has_more: hasMore }
+      if (hasMore && next) {
+        pagination.next_cursor = next
+        pagination.hint =
+          'More events in this window. Call again with the same start_time/end_time/filters and cursor=pagination.next_cursor.'
+      }
+      return buildResult(
+        { data: rows, pagination, meta: { source: `POST /info ${String(body.type)}` } },
+        {
+          summary:
+            args.view === 'completions'
+              ? `${rows.length} order completion(s).`
+              : `${rows.length} order update(s) for builder ${String(body.builder)}.`,
           maxTokens: ctx.config.maxResponseTokens,
         },
       )
