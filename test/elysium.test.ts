@@ -40,11 +40,15 @@ describe('elysium tools (real module, mocked fetch)', () => {
   it('hd_elysium_stats: current and daily hit their routes', async () => {
     const a = recorder(apiSingle({ total_blocks: 1 }))
     await tool('hd_elysium_stats').handler({ view: 'current', days: 30 }, a.ctx)
-    expect(a.seen[0]?.pathname).toBe('/elysium/testnet/stats')
+    expect(a.seen[0]?.pathname).toBe('/elysium/mainnet/stats')
+
+    const t = recorder(apiSingle({ total_blocks: 1 }))
+    await tool('hd_elysium_stats').handler({ network: 'testnet', view: 'current', days: 30 }, t.ctx)
+    expect(t.seen[0]?.pathname).toBe('/elysium/testnet/stats')
 
     const b = recorder(apiList([{ day: '2026-09-29' }]))
     const res = await tool('hd_elysium_stats').handler({ view: 'daily', days: 7 }, b.ctx)
-    expect(b.seen[0]?.pathname).toBe('/elysium/testnet/stats/daily')
+    expect(b.seen[0]?.pathname).toBe('/elysium/mainnet/stats/daily')
     expect(b.seen[0]?.searchParams.get('days')).toBe('7')
     expect(res.isError).toBeUndefined()
   })
@@ -55,7 +59,7 @@ describe('elysium tools (real module, mocked fetch)', () => {
       { transactions: false, start_block: 5, start_time: '2026-09-20T00:00:00Z', ...page },
       list.ctx,
     )
-    expect(list.seen[0]?.pathname).toBe('/elysium/testnet/blocks')
+    expect(list.seen[0]?.pathname).toBe('/elysium/mainnet/blocks')
     expect(list.seen[0]?.searchParams.get('start_block')).toBe('5')
     expect(list.seen[0]?.searchParams.get('start_time')).toContain('2026-09-20T00:00:00')
 
@@ -64,20 +68,20 @@ describe('elysium tools (real module, mocked fetch)', () => {
       { block_number: 42, transactions: false, ...page },
       one.ctx,
     )
-    expect(one.seen[0]?.pathname).toBe('/elysium/testnet/blocks/42')
+    expect(one.seen[0]?.pathname).toBe('/elysium/mainnet/blocks/42')
 
     const txs = recorder(apiList([{ tx_hash: HASH }]))
     await tool('hd_elysium_blocks').handler(
       { block_number: 42, transactions: true, ...page },
       txs.ctx,
     )
-    expect(txs.seen[0]?.pathname).toBe('/elysium/testnet/blocks/42/transactions')
+    expect(txs.seen[0]?.pathname).toBe('/elysium/mainnet/blocks/42/transactions')
   })
 
   it('hd_elysium_transactions: detail by hash, feed with filters', async () => {
     const one = recorder(apiSingle({ tx_hash: HASH, logs: [], token_transfers: [] }))
     await tool('hd_elysium_transactions').handler({ tx_hash: HASH, ...page }, one.ctx)
-    expect(one.seen[0]?.pathname).toBe(`/elysium/testnet/transactions/${HASH}`)
+    expect(one.seen[0]?.pathname).toBe(`/elysium/mainnet/transactions/${HASH}`)
 
     const feed = recorder(apiList([{ tx_hash: HASH }]))
     await tool('hd_elysium_transactions').handler(
@@ -91,7 +95,7 @@ describe('elysium tools (real module, mocked fetch)', () => {
       feed.ctx,
     )
     const q = feed.seen[0]?.searchParams
-    expect(feed.seen[0]?.pathname).toBe('/elysium/testnet/transactions')
+    expect(feed.seen[0]?.pathname).toBe('/elysium/mainnet/transactions')
     expect(q?.get('from_addr')).toBe(ADDRESS)
     expect(q?.get('method_id')).toBe('0xa9059cbb')
     expect(q?.get('include_spam')).toBe('false')
@@ -104,7 +108,7 @@ describe('elysium tools (real module, mocked fetch)', () => {
       { view: 'track', tx_hash: HASH, ...page },
       r.ctx,
     )
-    expect(r.seen[0]?.pathname).toBe(`/elysium/testnet/bridge/transfers/${HASH}`)
+    expect(r.seen[0]?.pathname).toBe(`/elysium/mainnet/bridge/transfers/${HASH}`)
     expect((res.structuredContent as { data: unknown[] }).data).toHaveLength(2)
   })
 
@@ -131,7 +135,7 @@ describe('elysium tools (real module, mocked fetch)', () => {
       { view: 'retryables', status: 'failed', ...page },
       ret.ctx,
     )
-    expect(ret.seen[0]?.pathname).toBe('/elysium/testnet/bridge/retryables')
+    expect(ret.seen[0]?.pathname).toBe('/elysium/mainnet/bridge/retryables')
     expect(ret.seen[0]?.searchParams.get('status')).toBe('failed')
 
     const tok = recorder(apiList([]))
@@ -139,11 +143,11 @@ describe('elysium tools (real module, mocked fetch)', () => {
       { view: 'tokens', route: 'canonical', ...page },
       tok.ctx,
     )
-    expect(tok.seen[0]?.pathname).toBe('/elysium/testnet/bridge/tokens')
+    expect(tok.seen[0]?.pathname).toBe('/elysium/mainnet/bridge/tokens')
 
     const res = recorder(apiList([{ backed: true }]))
     const out = await tool('hd_elysium_bridge').handler({ view: 'reserves', ...page }, res.ctx)
-    expect(res.seen[0]?.pathname).toBe('/elysium/testnet/bridge/reserves')
+    expect(res.seen[0]?.pathname).toBe('/elysium/mainnet/bridge/reserves')
     expect(res.seen[0]?.searchParams.has('limit')).toBe(false)
     expect((out.structuredContent as { notes?: string[] }).notes?.[0]).toContain('route')
   })
@@ -154,23 +158,23 @@ describe('elysium tools (real module, mocked fetch)', () => {
       { view: 'detail', standard: 'erc20', search: 'HYPE', ...page },
       list.ctx,
     )
-    expect(list.seen[0]?.pathname).toBe('/elysium/testnet/tokens')
+    expect(list.seen[0]?.pathname).toBe('/elysium/mainnet/tokens')
     expect(list.seen[0]?.searchParams.get('search')).toBe('HYPE')
 
     const det = recorder(apiSingle({ address: ADDRESS }))
     await tool('hd_elysium_tokens').handler({ address: ADDRESS, view: 'detail', ...page }, det.ctx)
-    expect(det.seen[0]?.pathname).toBe(`/elysium/testnet/tokens/${ADDRESS}`)
+    expect(det.seen[0]?.pathname).toBe(`/elysium/mainnet/tokens/${ADDRESS}`)
 
     const hol = recorder(apiList([]))
     await tool('hd_elysium_tokens').handler({ address: ADDRESS, view: 'holders', ...page }, hol.ctx)
-    expect(hol.seen[0]?.pathname).toBe(`/elysium/testnet/tokens/${ADDRESS}/holders`)
+    expect(hol.seen[0]?.pathname).toBe(`/elysium/mainnet/tokens/${ADDRESS}/holders`)
 
     const tr = recorder(apiList([]))
     await tool('hd_elysium_tokens').handler(
       { address: ADDRESS, view: 'transfers', holder: ADDRESS, ...page },
       tr.ctx,
     )
-    expect(tr.seen[0]?.pathname).toBe(`/elysium/testnet/tokens/${ADDRESS}/transfers`)
+    expect(tr.seen[0]?.pathname).toBe(`/elysium/mainnet/tokens/${ADDRESS}/transfers`)
     expect(tr.seen[0]?.searchParams.get('holder')).toBe(ADDRESS)
   })
 
@@ -180,19 +184,19 @@ describe('elysium tools (real module, mocked fetch)', () => {
       { address: ADDRESS, view: 'balances', block: 100, ...page },
       bal.ctx,
     )
-    expect(bal.seen[0]?.pathname).toBe(`/elysium/testnet/user/${ADDRESS}/balances`)
+    expect(bal.seen[0]?.pathname).toBe(`/elysium/mainnet/user/${ADDRESS}/balances`)
     expect(bal.seen[0]?.searchParams.get('block')).toBe('100')
 
     const act = recorder(apiList([]))
     await tool('hd_elysium_user').handler({ address: ADDRESS, view: 'activity', ...page }, act.ctx)
-    expect(act.seen[0]?.pathname).toBe(`/elysium/testnet/user/${ADDRESS}/activity`)
+    expect(act.seen[0]?.pathname).toBe(`/elysium/mainnet/user/${ADDRESS}/activity`)
 
     const br = recorder(apiList([]))
     await tool('hd_elysium_user').handler(
       { address: ADDRESS, view: 'bridge', direction: 'deposit', ...page },
       br.ctx,
     )
-    expect(br.seen[0]?.pathname).toBe(`/elysium/testnet/user/${ADDRESS}/bridge`)
+    expect(br.seen[0]?.pathname).toBe(`/elysium/mainnet/user/${ADDRESS}/bridge`)
     expect(br.seen[0]?.searchParams.get('direction')).toBe('deposit')
   })
 })
