@@ -1,8 +1,8 @@
 # @hypedexer/mcp-server
 
-> [Model Context Protocol](https://modelcontextprotocol.io) server for the [HypeDexer](https://hypedexer.com) Hyperliquid indexer: 98 read-only tools over the full API surface (REST, both WebSocket hubs, HyperEVM JSON-RPC), plus keyless Hyperliquid public tools so it works with no API key at all.
+> [Model Context Protocol](https://modelcontextprotocol.io) server for the [HypeDexer](https://hypedexer.com) Hyperliquid indexer: 99 read-only tools over the full API surface (REST, both WebSocket hubs, HyperEVM JSON-RPC), plus keyless Hyperliquid public tools so it works with no API key at all.
 
-[![tools](https://img.shields.io/badge/tools-98%20read--only-8A2BE2?labelColor=333)](#tool-catalog)
+[![tools](https://img.shields.io/badge/tools-99%20read--only-8A2BE2?labelColor=333)](#tool-catalog)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.29-blue?labelColor=333)](https://github.com/modelcontextprotocol/typescript-sdk)
 [![node >= 22](https://img.shields.io/badge/node-%3E%3D22-3c873a?labelColor=333)](https://nodejs.org)
 [![tests](https://img.shields.io/badge/tests-71%20passing-brightgreen?labelColor=333)](#development)
@@ -30,7 +30,7 @@ This server collapses all of that behind **one tool contract**: uniform paginati
 
 |                |                                                                                  |
 | -------------- | -------------------------------------------------------------------------------- |
-| **Coverage**   | 98 tools: REST endpoints (incl. Elysium, /market history, typed POST /info) + 19 WS channels + HyperEVM RPC |
+| **Coverage**   | 99 tools: REST endpoints (incl. Elysium, /market history, typed POST /info) + 19 WS channels + HyperEVM RPC |
 | **Keyless**    | 8 `hl_public_*` tools hit the free Hyperliquid API: boots with no key            |
 | **Groups**     | 20 env-gated groups, 3 presets (`public` / `core` / `all`)                       |
 | **Transports** | stdio (default) + streamable HTTP (stateless, MCP 2026-07-28)                    |
@@ -205,7 +205,7 @@ All tools are read-only. `hl_public_*` need no key; `hd_*` need `HYPEDEXER_API_K
 | `fills` | `hd_fills_search`, `hd_fills_count` |
 | `markets` | `hd_market_snapshot_24h`, `hd_market_daily_series`, `hd_user_coin_distribution` |
 | `exchange` | `hd_candles` (candles + one-call volume totals, e.g. all-time volume of a spot pair), `hd_exchange_info`, `hd_order_book`, `hd_market_history`, `hd_spot_meta` |
-| `account` | `hd_account_state` (live wallet state: positions, spot balances, open orders, fees, sub-accounts, staking, ...), `hd_account_history` (orders, ledger, TWAP slices, order status) |
+| `account` | `hd_account_state` (live wallet state: positions, spot balances, open orders, fees, sub-accounts, staking, ...), `hd_account_history` (orders, ledger, TWAP slices, order status), `hd_order_completions` (completed orders and builder order updates over REST, paged, 90 days) |
 | `analytics` | `hd_analytics_fills_stats`, `hd_analytics_priority_fees`, `hd_analytics_liquidations_stats` |
 | `traders` | `hd_user_profile`, `hd_users_batch_performance`, `hd_user_coins`, `hd_traders_leaderboard`, `hd_traders_active`, `hd_completed_trades_search`, `hd_completed_trade_fills` |
 | `liquidations` | `hd_liquidations_search` |
@@ -216,7 +216,7 @@ All tools are read-only. `hl_public_*` need no key; `hd_*` need `HYPEDEXER_API_K
 | `builders` | `hd_builders`, `hd_builder_stats`, `hd_builder_users` |
 | `twaps` | `hd_twaps_search`, `hd_twaps_stats`, `hd_twap_detail` |
 | `evm` | `hd_evm_stats`, `hd_evm_blocks`, `hd_evm_transactions`, `hd_evm_logs`, `hd_evm_transfers`, `hd_evm_bridge_events`, `hd_evm_user`, `hd_evm_hip3_backstop` |
-| `elysium` | `hd_elysium_stats`, `hd_elysium_blocks`, `hd_elysium_transactions`, `hd_elysium_logs`, `hd_elysium_batches`, `hd_elysium_bridge`, `hd_elysium_tokens`, `hd_elysium_user` (Elysium testnet, Kinetiq's L2: the 22 `/elysium/testnet` routes) |
+| `elysium` | `hd_elysium_stats`, `hd_elysium_blocks`, `hd_elysium_transactions`, `hd_elysium_logs`, `hd_elysium_batches`, `hd_elysium_bridge`, `hd_elysium_tokens`, `hd_elysium_user` (Elysium, Kinetiq's L2: the 22 `/elysium/{network}` routes, `network` mainnet by default or testnet) |
 | `streams` | `hd_stream_liquidations` |
 | `live` | `hd_live_all_fills`, `hd_live_user_fills`, `hd_live_bbo`, `hd_live_l2_book`, `hd_live_l4_book`, `hd_live_l4_book_updates`, `hd_live_trades`, `hd_live_all_mids`, `hd_live_feed` |
 | `rpc` | `hd_rpc_call`, `hd_rpc_block_number`, `hd_rpc_call_contract`, `hd_rpc_get_logs`, `hd_rpc_get_block`, `hd_rpc_subscribe` |
@@ -227,7 +227,7 @@ All tools are read-only. `hl_public_*` need no key; `hd_*` need `HYPEDEXER_API_K
 MCP tools are request/response; HypeDexer's WebSockets push continuously. The `hd_stream_*` and `hd_live_*` tools bridge the gap: each opens the socket, subscribes to one channel, collects pushed messages for a bounded window (`seconds`, 1-30, default 5, or until `max_items`), then closes and returns the batch: a **point-in-time snapshot, not a standing subscription**. Call again for a fresh window.
 
 - **`streams`**: the indexed endpoint (`wss://.../ws`) serves `liquidations` (plural on subscribe), with `user`, `users`, `amount_dollars` and `builder` filters; the server replays up to 200 cached events first. The former `completed_trades`, `fills_spot`, `recent_activity` and `hip4_events` channels are refused upstream (2026-10-21), so their tools were removed: use `hd_completed_trades_search`, `hd_fills_search scope="spot"` and `hd_hip4_fills`.
-- **`live`**: the Live *mirror* endpoint (`wss://.../ws?mode=mirror`): order books (`l2Book`/`l4Book`/`l4BookUpdates`), `bbo`, `trades` (per `coin`), the `allFills` firehose, `userFills` (per `user`), `allMids` (optional `dex`), and through `hd_live_feed`: `candle` / `allCandles`, `activeAssetCtx`, `fundingRates`, `setOracleUpdates`, `allTwapStatusUpdates`, `orderUpdates`, `userEvents`, `userFundings`, `userNonFundingLedgerUpdates`. Book channels return the current snapshot in the first frame.
+- **`live`**: the Live *mirror* endpoint (`wss://.../ws?mode=mirror`): order books (`l2Book`/`l4Book`/`l4BookUpdates`), `bbo`, `trades` (per `coin`), the `allFills` firehose (optional `builder`), `userFills` (per `user`), `allMids` (optional `dex`), and through `hd_live_feed`: `candle` / `allCandles`, `activeAssetCtx`, `fundingRates`, `setOracleUpdates`, `allTwapStatusUpdates`, `orderUpdates` (per `user` or `builder`), `orderCompletions` (optional `users` / `builder`), `userEvents`, `userFundings`, `userNonFundingLedgerUpdates`. Book channels return the current snapshot in the first frame.
 
   Per-channel status (live-verified 2026-10-21):
 

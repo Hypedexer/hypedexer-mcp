@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+Catch-up with the API of late October (live-verified 2026-11-02). Surface: 99
+tools with `all,info,rpc`.
+
+- New `hd_order_completions` (account group): `view=completions` reads
+  `orderCompletions` over POST /info (every order or TWAP that ended after
+  being executed, optional `users` and/or `builder`, a union) and
+  `view=builder_order_updates` reads `builderOrderUpdates` (builder required).
+  Both are ascending, paged with `X-Has-More` / `X-Next-Cursor`, 90 days kept.
+- `hd_live_feed`: new `orderCompletions` channel (optional `users`, up to 1000
+  in this tool, and `builder`); `orderUpdates` takes `builder` in place of
+  `user`.
+- `hd_live_all_fills`: optional `builder` filter; descriptions note the
+  `leverage` field on perp fills since 2026-10-22.
+- Elysium: the eight tools take `network` (`mainnet` by default, or
+  `testnet`); mainnet serves the same 22 routes and shapes. `meta.network`
+  says which one answered. Calls without `network` used to read testnet.
+- Not wired: `allDexsClearinghouseState` answers "Unsupported subscription"
+  on the standard host with our key.
+- Dependencies: `@modelcontextprotocol/server` 2.4 and `client` 2.4 (both
+  had advisories below 2.3), `@modelcontextprotocol/node` 2.1.2, `zod` 4.6.7,
+  `express` 5.3, `hono` 4.13.16, `vite` 6.4.5, `vitest` 4.1.12, plus overrides
+  for `@hono/node-server` 2.1, `qs`, `proxy-addr`, `body-parser`, `esbuild`
+  0.28 and `source-map-js`. `pnpm audit` goes from 18 advisories (1 critical,
+  6 high) to 0. No major version change.
+
 Hosted multi-tenant HTTP mode, groundwork for mcp.hypedexer.com and MCP plans.
 
 - New `HYPEDEXER_MCP_AUTH_MODE=apikey`: each request's bearer is the caller's

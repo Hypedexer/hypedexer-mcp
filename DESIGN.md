@@ -2,6 +2,8 @@
 
 > 2026-08-05: transports migrated to MCP spec 2026-07-28 / SDK v2 (stateless HTTP via `createMcpHandler`, no sessions; SDK packages `@modelcontextprotocol/server`/`node`/`client`, zod 4). Transport details below describe the original 1.x design; `src/transports/http.ts` is authoritative.
 >
+> 2026-11-02: `hd_order_completions` (orderCompletions and builderOrderUpdates over REST), `orderCompletions` and `orderUpdates` by builder on `hd_live_feed`, `builder` on `hd_live_all_fills`, and a `network` parameter (mainnet by default) on the eight Elysium tools. 99 tools with `all,info,rpc`.
+>
 > 2026-10-21: doc-and-live audit. The full online doc (docs.hypedexer.com) was read and every gap was live-tested before wiring. Added the `exchange` group (hd_candles, hd_exchange_info, hd_order_book, hd_market_history, hd_spot_meta) and the `account` group (hd_account_state, hd_account_history), both in `core` and `all`; added hd_users_batch_performance and hd_live_feed; removed four stream tools whose channels the server now refuses. 98 tools with `all,info,rpc`. Details in the "2026-10-21 audit" section after the catalog and in CHANGELOG.md.
 >
 > Source: research+design workflow (wf_50bf6e52). Catalog grounded against ~/hypedexer-sdk/ENDPOINTS.md (100 entry points). MCP SDK specifics verified against installed @modelcontextprotocol/sdk@1.29.0.
@@ -116,7 +118,7 @@ src/tools/public.ts                       GROUP public: 8 hl_public_* tools over
 src/tools/fills.ts                        GROUP fills: hd_fills_search, hd_fills_count
 src/tools/markets.ts                      GROUP markets: hd_market_snapshot_24h, hd_market_daily_series, hd_user_coin_distribution
 src/tools/exchange.ts                     GROUP exchange: hd_candles, hd_exchange_info, hd_order_book, hd_market_history, hd_spot_meta
-src/tools/account.ts                      GROUP account: hd_account_state, hd_account_history
+src/tools/account.ts                      GROUP account: hd_account_state, hd_account_history, hd_order_completions
 src/tools/analytics.ts                    GROUP analytics: hd_analytics_fills_stats, hd_analytics_priority_fees, hd_analytics_liquidations_stats
 src/tools/traders.ts                      GROUP traders: hd_user_profile, hd_users_batch_performance, hd_user_coins, hd_traders_leaderboard, hd_traders_active, hd_completed_trades_search, hd_completed_trade_fills
 src/tools/liquidations.ts                 GROUP liquidations: hd_liquidations_search
