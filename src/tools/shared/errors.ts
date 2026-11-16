@@ -66,7 +66,7 @@ export function handleToolError(err: unknown): ToolResult {
   if (err instanceof AuthError) {
     return errorResult(
       'Authentication failed (401). The HypeDexer API key is missing or invalid.',
-      'Set a valid HYPEDEXER_API_KEY. Generate one at https://www.app.hypedexer.com/.',
+      'Set a valid HYPEDEXER_API_KEY. Generate one at https://app.hypedexer.com/.',
     )
   }
 

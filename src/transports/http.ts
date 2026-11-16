@@ -163,7 +163,7 @@ export async function startHttp(config: Config, logger: Logger): Promise<HttpHan
         rpcError(
           res,
           401,
-          'Unauthorized: send your HypeDexer API key as "Authorization: Bearer <key>" or in the URL as "/mcp?key=<key>". Get one at https://www.app.hypedexer.com/.',
+          'Unauthorized: send your HypeDexer API key as "Authorization: Bearer <key>" or in the URL as "/mcp?key=<key>". Get one at https://app.hypedexer.com/.',
         )
         return
       }
@@ -175,7 +175,7 @@ export async function startHttp(config: Config, logger: Logger): Promise<HttpHan
       rpcError(
         res,
         401,
-        'Unauthorized: the bearer or ?key= must be a HypeDexer API key (get one at https://www.app.hypedexer.com/), or be omitted for keyless public tools.',
+        'Unauthorized: the bearer or ?key= must be a HypeDexer API key (get one at https://app.hypedexer.com/), or be omitted for keyless public tools.',
       )
       return
     }

@@ -64,7 +64,7 @@ Restart Claude Desktop, then ask: *"Use HypeDexer to get the current BTC mid pri
 
 ## With a HypeDexer API key
 
-Generate a key at [app.hypedexer.com](https://www.app.hypedexer.com/) and set `HYPEDEXER_API_KEY` to unlock the full `hd_*` surface:
+Generate a key at [app.hypedexer.com](https://app.hypedexer.com/) and set `HYPEDEXER_API_KEY` to unlock the full `hd_*` surface:
 
 ```json
 {

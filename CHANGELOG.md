@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.1 (2026-11-16)
+
+- Fix the key signup link in the 401 messages (stdio and HTTP), the README and
+  `.env.example`: `https://www.app.hypedexer.com/` no longer answers (TLS
+  error), `https://app.hypedexer.com/` does.
+
 ## 2.2.0 (2026-11-02)
 
 Catch-up with the API of late October (live-verified 2026-11-02). Surface: 99
