@@ -1,3 +1,4 @@
+import { encodeTime } from '../core/time.js'
 import type { Query } from '../hypedexer/client.js'
 import { requireHd } from './context.js'
 import { buildResult, rawResult } from './shared/output.js'
@@ -46,6 +47,75 @@ function windowHint(rows: unknown[], limit: number, timeKey: string): string[] {
     `Page is full (${limit} rows). Continue with start_time set just after the last row (${String(t)}); offset is ignored by this endpoint.`,
   ]
 }
+const HOUR_MS = 3_600_000
+const BURN_MAX_HOURS = 72
+const BURN_MAX_PAGES = 60
+
+export interface GossipRow {
+  slotId: number
+  startTime: string
+  startGas?: number | null
+  endGas?: number | null
+  winner?: string | null
+}
+
+const round8 = (n: number) => Math.round(n * 1e8) / 1e8
+
+/**
+ * Turn raw gossip snapshots into HYPE burned. The history repeats each auction on every ~30 s
+ * snapshot and only the last one carries the clearing price (endGas), so auctions are keyed by
+ * slot + start time and counted once.
+ */
+export function gossipBurn(rows: GossipRow[]) {
+  const auctions = new Map<
+    string,
+    { slot: number; day: string; endGas: number | null; winner: string | null }
+  >()
+  for (const r of rows) {
+    const key = `${r.slotId}|${r.startTime}`
+    const prev = auctions.get(key)
+    const endGas = typeof r.endGas === 'number' ? r.endGas : null
+    auctions.set(key, {
+      slot: r.slotId,
+      day: String(r.startTime).slice(0, 10),
+      endGas: endGas ?? prev?.endGas ?? null,
+      winner: (endGas !== null ? r.winner : (prev?.winner ?? r.winner)) ?? null,
+    })
+  }
+  let total = 0
+  let unpriced = 0
+  const byDay = new Map<string, number>()
+  const bySlot = new Map<number, { hype: number; auctions: number }>()
+  const byWinner = new Map<string, number>()
+  for (const a of auctions.values()) {
+    if (a.endGas === null) {
+      unpriced++
+      continue
+    }
+    total += a.endGas
+    byDay.set(a.day, (byDay.get(a.day) ?? 0) + a.endGas)
+    const s = bySlot.get(a.slot) ?? { hype: 0, auctions: 0 }
+    bySlot.set(a.slot, { hype: s.hype + a.endGas, auctions: s.auctions + 1 })
+    if (a.winner) byWinner.set(a.winner, (byWinner.get(a.winner) ?? 0) + a.endGas)
+  }
+  return {
+    hype_burned: round8(total),
+    auctions: auctions.size,
+    priced_auctions: auctions.size - unpriced,
+    unpriced_auctions: unpriced,
+    by_day: [...byDay.entries()]
+      .sort()
+      .map(([date, hype]) => ({ date, hype_burned: round8(hype) })),
+    by_slot: [...bySlot.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([slot, v]) => ({ slot, hype_burned: round8(v.hype), auctions: v.auctions })),
+    top_winners: [...byWinner.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([winner, hype]) => ({ winner, hype_burned: round8(hype) })),
+  }
+}
+
 export const hip3Tools: ToolModule = [
   defineTool({
     name: 'hd_hip3_overview',
@@ -499,19 +569,24 @@ export const hip3Tools: ToolModule = [
   defineTool({
     name: 'hd_hip3_gossip',
     group: 'hip3',
-    title: 'HIP-3 priority-fee gossip',
+    title: 'Read-priority (gossip) auction',
     description:
-      'Priority-fee gossip auction state for HIP-3 priority slots. view="status" (default) returns the ' +
-      'live object (previous winners + the current per-slot auctions: gas, winner, timing). ' +
-      'view="history" returns the offset-paged snapshot history; filter with slot_id, bound it with ' +
-      'start_time/end_time (ISO-8601 or epoch-ms) and sort with order (ASC|DESC by snapshot time, default DESC). ' +
-      'Quirks: `winner` is usually a gossip node IPv4 address, but the earliest history rows (April 2026) carry a ' +
-      'wallet address instead; history may contain duplicate rows per snapshot; live on 2026-10-21 the newest ' +
-      'history row was from 2026-07-11, so recent windows can be empty.',
+      'Hyperliquid read-priority auction: node IPs bid HYPE in Dutch auctions (3 slots, a new round every ' +
+      '3 minutes) to receive network data earlier. It covers the whole exchange, not only HIP-3, and the ' +
+      'winning price is burned, separately from order (write) priority. Views:\n' +
+      '- status (default): previous winners and the live per-slot auctions (startGas, currentGas, timing).\n' +
+      '- burn (start_time/end_time, default the last 24h, max 72h): HYPE actually burned in the window. Each ' +
+      'auction is counted once at its clearing price (endGas), with totals per UTC day, per slot and per winning ' +
+      'IP. This is the number to add to hd_analytics_priority_fees for total priority burned.\n' +
+      '- history: raw snapshots, one row per auction every ~30 s (so each auction repeats about six times; ' +
+      'endGas is only set on the last snapshot). Filter with slot_id, bound with start_time/end_time, order ' +
+      'ASC|DESC, offset paging.\n' +
+      '`winner` is a node IPv4 (the earliest April 2026 rows carry a wallet address); the paying wallet is not ' +
+      'exposed. Values are HYPE.',
     inputSchema: {
       view: viewSchema(
-        ['status', 'history'],
-        'status = live per-slot auction object; history = snapshot history (offset-paged).',
+        ['status', 'burn', 'history'],
+        'status = live auctions; burn = HYPE burned over a window (deduplicated); history = raw snapshots.',
         'status',
       ),
       slot_id: z.number().int().min(0).optional().describe('view="history": one priority slot.'),
@@ -529,6 +604,47 @@ export const hip3Tools: ToolModule = [
         return rawResult(
           data,
           'HIP-3 priority-fee gossip status. Note: `winner` is a gossip node IPv4, not a wallet address.',
+        )
+      }
+      if (args.view === 'burn') {
+        const endMs = args.end_time ? Number(encodeTime(args.end_time, 'epochCamel')) : Date.now()
+        const startMs = args.start_time
+          ? Number(encodeTime(args.start_time, 'epochCamel'))
+          : endMs - 24 * HOUR_MS
+        if (!(endMs > startMs)) throw new Error('burn: end_time must be after start_time.')
+        if (endMs - startMs > BURN_MAX_HOURS * HOUR_MS) {
+          throw new Error(`burn: the window is capped at ${BURN_MAX_HOURS} hours; split it.`)
+        }
+        const rows: GossipRow[] = []
+        for (let offset = 0, pages = 0; pages < BURN_MAX_PAGES; pages++) {
+          const page = await hd.getApiList<GossipRow>('/hip3/priority-fees/gossip/history', {
+            start_time: new Date(startMs).toISOString(),
+            end_time: new Date(endMs).toISOString(),
+            order: 'ASC',
+            limit: 1000,
+            offset,
+          })
+          rows.push(...page.data)
+          if (page.data.length < 1000) break
+          offset += page.data.length
+        }
+        return buildResult(
+          {
+            data: gossipBurn(rows),
+            meta: {
+              source: '/hip3/priority-fees/gossip/history (deduplicated per auction)',
+              window: {
+                start: new Date(startMs).toISOString(),
+                end: new Date(endMs).toISOString(),
+              },
+              snapshots_read: rows.length,
+            },
+            notes: [
+              'One auction = one slot round; burned = its clearing price (endGas). Auctions whose last ' +
+                'snapshot carries no endGas are counted in unpriced_auctions and add nothing.',
+            ],
+          },
+          { summary: 'Read-priority HYPE burned.', maxTokens: ctx.config.maxResponseTokens },
         )
       }
       let query: Query = { limit: args.limit, offset: args.offset }

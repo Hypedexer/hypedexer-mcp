@@ -62,7 +62,8 @@ export const tradersTools: ToolModule = [
       '- top_trades: best round trips (`sort` pnl | pnl_abs | notional | loss, `limit` 1-50, `window` default all, ' +
       '`include_open` default true ranks open positions by unrealized PnL). Leverage null before 2026-09-06.\n' +
       'Returns one object. Caveats: an invalid/never-active address still returns 200 with zeroed fields; a "never" ' +
-      'last_activity is normalized to null; overview total_priority_gas is always 0; performance total_fees and ' +
+      'last_activity is normalized to null; overview total_priority_gas is the write priority paid all-time, in ' +
+      'HYPE; performance total_fees and ' +
       'total_funding read 0 live; avg_holding_time_s runs high (never-closed positions count).',
     inputSchema: {
       user: addressSchema,
@@ -137,7 +138,7 @@ export const tradersTools: ToolModule = [
       }
 
       const summaries: Record<string, string> = {
-        overview: `Account overview for ${args.user}. Note: an unknown/never-active address returns 200 with zeroed fields, and total_priority_gas is always 0.`,
+        overview: `Account overview for ${args.user}. Note: an unknown/never-active address returns 200 with zeroed fields.`,
         performance: `Performance metrics for ${args.user}. Note: avg_holding_time_s runs high (includes never-closed positions).`,
         account: `Latest account snapshot for ${args.user}.`,
         equity_history: `Equity history for ${args.user}.`,

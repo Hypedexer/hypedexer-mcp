@@ -59,15 +59,19 @@ export const analyticsTools: ToolModule = [
     group: 'analytics',
     title: 'Hyperliquid priority-fee analytics',
     description:
-      'Priority-fee (gas tip) economics, in three views selected by `view`:\n' +
+      'Write priority (HYPE burned to jump the order queue), in HYPE, from the priorityGas of filled orders, ' +
+      'in three views selected by `view`:\n' +
       '- "stats" (default): a single rollup over a recent window - fills paying priority, total/avg/min/max ' +
       'priority gas, and unique payers. Set hours (1-168, default 1) and optionally coin.\n' +
-      '- "daily": a time series of per-day priority-fee totals (fills, fillsWithFee, totalGas, uniqueUsers). ' +
-      'Narrow it with start_time/end_time. Returned as a list (live on 2026-10-21 the series ended on ' +
-      '2026-07-11).\n' +
-      '- "leaderboard": top gossip nodes ranked by priority gas contributed (totalGas, count, daysActive). ' +
-      'Each row is keyed by node, not by wallet - the node IPv4 is surfaced as `nodeIp`. Use limit (1-200) to cap rows.\n' +
-      'These views return everything in one call (no pagination).',
+      '- "daily": per-day totals since mainnet launch on 2026-04-13 (fills, fillsWithFee, totalGas in HYPE, ' +
+      'uniqueUsers), kept up to date. Narrow it with start_time/end_time. Since 2026-07-12 `fills` equals ' +
+      '`fillsWithFee`, so the share of fills paying priority cannot be derived after that date.\n' +
+      '- "leaderboard": top gossip nodes (nodeIp, totalGas, count, daysActive). Caution: it sums duplicate ' +
+      'snapshots of each auction and overstates real spend by roughly an order of magnitude; for the HYPE ' +
+      'actually burned in the read auction use hd_hip3_gossip view="burn".\n' +
+      'Not covered: priority on ALO orders that never filled (paid on the posted size), and the read-priority ' +
+      "auction (see hd_hip3_gossip). Every priority fee is burned. Values are HYPE: multiply by the day's " +
+      'HYPE price (hd_candles coin="@107" or "HYPE") for USD. One call each (no pagination).',
     inputSchema: {
       view: viewSchema(
         ['stats', 'daily', 'leaderboard'],
