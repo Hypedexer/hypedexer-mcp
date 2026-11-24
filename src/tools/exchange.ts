@@ -1,6 +1,7 @@
 import { encodeTime } from '../core/time.js'
 import type { Query } from '../hypedexer/client.js'
-import { requireHd } from './context.js'
+import { type ToolContext, requireHd } from './context.js'
+import { spotRows } from './public.js'
 import { requireField } from './shared/errors.js'
 import { buildResult, rawResult } from './shared/output.js'
 import { buildTimeQuery, offsetPagination } from './shared/pagination.js'
@@ -159,6 +160,7 @@ interface SpotToken {
   evmContract?: unknown
   isCanonical?: boolean
   deployerTradingFeeShare?: string
+  deployerLabel?: string
 }
 
 interface SpotPair {
@@ -173,7 +175,11 @@ interface SpotMeta {
   tokens: SpotToken[]
 }
 
-/** Resolve a spot handle (`@307`), pair name (`PURR/USDC`) or token name (`HTAO`) from spotMeta. */
+/**
+ * Resolve a spot handle (`@307`), pair name (`PURR/USDC`) or token name (`HTAO`) from spotMeta.
+ * When nothing matches exactly, the query is matched as a substring of the base token's name,
+ * full name or deployer label, so a family keyword ("xStock", "eqx") lists every pair of it.
+ */
 export function resolveSpot(meta: SpotMeta, query: string): Record<string, unknown>[] {
   const q = query.trim()
   const byIndex = new Map(meta.tokens.map((t) => [t.index, t]))
@@ -203,7 +209,56 @@ export function resolveSpot(meta: SpotMeta, query: string): Record<string, unkno
   const tokenIdx = new Set(
     meta.tokens.filter((t) => t.name.toUpperCase() === upper).map((t) => t.index),
   )
-  return meta.universe.filter((p) => p.tokens.some((t) => tokenIdx.has(t))).map(describe)
+  const exact = meta.universe.filter((p) => p.tokens.some((t) => tokenIdx.has(t))).map(describe)
+  if (exact.length > 0) return exact
+  // No exact hit: treat the query as a family keyword ("xStock", "eqx") and match it inside the
+  // BASE token's name, full name or deployer label. Quote tokens are skipped, otherwise "usd"
+  // would return every USDC pair.
+  const needle = q.toLowerCase()
+  const family = new Set(
+    meta.tokens
+      .filter((t) =>
+        [t.name, t.fullName, t.deployerLabel].some(
+          (field) => typeof field === 'string' && field.toLowerCase().includes(needle),
+        ),
+      )
+      .map((t) => t.index),
+  )
+  return meta.universe
+    .filter((p) => family.has(p.tokens[0] ?? -1))
+    .map((p) => ({ ...describe(p), match: 'contains' }))
+}
+
+/** A spot market id: an "@N" handle or a canonical pair name like "PURR/USDC". */
+export function isSpotCoin(coin: string): boolean {
+  return /^@\d+$/.test(coin) || coin.includes('/')
+}
+
+/**
+ * The node's per-coin context for a spot pair carries only midPx/impactPxs. Fill the missing
+ * price and 24h volume fields from the public spotMetaAndAssetCtxs (joined on the pair name);
+ * a failure there leaves the node payload untouched.
+ */
+async function completeSpotContext(
+  ctx: ToolContext,
+  coin: string,
+  payload: unknown,
+): Promise<unknown> {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload
+  try {
+    const raw = (await ctx.hl.info({ type: 'spotMetaAndAssetCtxs' })) as unknown[]
+    const ctxs = (raw?.[1] ?? []) as Record<string, unknown>[]
+    const match = ctxs.find((c) => c.coin === coin)
+    if (!match) return payload
+    const out: Record<string, unknown> = { ...(payload as Record<string, unknown>) }
+    for (const key of ['markPx', 'prevDayPx', 'dayNtlVlm', 'dayBaseVlm', 'circulatingSupply']) {
+      if ((out[key] === null || out[key] === undefined) && match[key] !== undefined)
+        out[key] = match[key]
+    }
+    return out
+  } catch {
+    return payload
+  }
 }
 
 export const exchangeTools: ToolModule = [
@@ -288,7 +343,8 @@ export const exchangeTools: ToolModule = [
       '- data_coverage: per dataset (fills, spotFills, orders, twaps, userFunding, ledger, liquidations) the ' +
       'start of complete coverage, latest event and delay. Use it to tell "no data" from "not covered".\n' +
       '- asset_context (coin required): funding, open interest, mark/oracle/mid, 24h volumes for one coin. ' +
-      'Spot handles return only midPx/impactPxs (volume fields null).\n' +
+      'For a spot pair ("@702", "PURR/USDC") the node only returns midPx/impactPxs, so markPx, prevDayPx, ' +
+      'dayNtlVlm (24h USD volume) and dayBaseVlm are completed from the public spotMetaAndAssetCtxs.\n' +
       '- all_mids (dex optional; omitted returns perps plus "@" spot and "#" outcome mids, "ALL_DEXS" adds HIP-3, ' +
       'a dex name returns only that dex).\n' +
       '- perp_dexs, all_perp_metas, perp_meta (dex optional), perp_dex_limits / perp_dex_status (dex required), ' +
@@ -351,8 +407,12 @@ export const exchangeTools: ToolModule = [
         if (args.limit !== undefined) body.limit = args.limit
       }
       const raw = await hd.post<unknown>('/info', body)
+      let payload = args.view === 'asset_context' ? unwrapResult(raw) : raw
+      if (args.view === 'asset_context' && isSpotCoin(String(body.coin))) {
+        payload = await completeSpotContext(ctx, String(body.coin), payload)
+      }
       return rawResult(
-        args.view === 'asset_context' ? unwrapResult(raw) : raw,
+        payload,
         `Exchange info view=${args.view}${body.dex ? ` dex=${String(body.dex)}` : ''}${body.coin ? ` coin=${String(body.coin)}` : ''}.`,
         { maxTokens: ctx.config.maxResponseTokens },
       )
@@ -371,7 +431,9 @@ export const exchangeTools: ToolModule = [
       '- liquidity (coin, or coins up to 20): spread, depth bands and simulated slippage for 10k/100k/1M USD.\n' +
       '- diffs (coin; start_time, limit 1-5000): recent raw book-diff events (order adds/removes with user and oid) ' +
       'from the last ~3 hours, newest first.\n' +
-      '- trades (coin optional; start_time/end_time, limit): recent trades with px, sz, side, tid, hash, users.\n' +
+      '- trades (coin optional; start_time/end_time, limit): recent trades with px, sz, side, tid, hash, users. ' +
+      'This is a short live window: a quiet pair (many spot pairs) can return [] although it traded earlier; for ' +
+      'a pair\'s past trades use hd_fills_search (scope="spot" for "@N" pairs).\n' +
       'For history use hd_market_history (book at a past minute, depth/spread/slippage series).',
     inputSchema: {
       view: viewSchema(['l2', 'depth', 'liquidity', 'diffs', 'trades'], 'Which book view.'),
@@ -550,12 +612,16 @@ export const exchangeTools: ToolModule = [
       'Spot reference data, one `view`:\n' +
       '- resolve (query required): map a spot handle ("@307"), pair name ("PURR/USDC") or token name ("HTAO") to ' +
       'its pair(s) with base/quote token metadata, from the live spotMeta. Use it before hd_candles / fills on a ' +
-      'spot coin, and to name an "@N" handle.\n' +
-      '- pairs: GET /spot/pairs (pair_index, base/quote names and token ids). Live it returned 200 rows while pair ' +
-      'indexes go above 1000 and no paging param is documented, so it may be partial: prefer view=resolve.\n' +
+      'spot coin, and to name an "@N" handle. With no exact hit the query is matched inside the base token name, ' +
+      'full name or deployer, so a family keyword lists a whole family: "xStock" (TSLAX, NVDAX...), "eqx" (EQNVDA...).\n' +
+      '- pairs (query, limit default 100): every spot pair from the live spotMeta as compact rows (coin handle, ' +
+      'pair label, base token full name, deployer), filtered by `query` (handle, token name or family keyword).\n' +
       '- tokens (search, limit 1-500, offset): GET /spot/tokens; rows can repeat per snapshot (same token_index).\n' +
       '- auctions_live (freshness_sec): spot deploy auctions running now ([] when none).\n' +
-      '- auctions_history (lookback_hours default 48, limit, offset): past spot deploy auctions.',
+      '- auctions_history (lookback_hours default 48, limit, offset): past spot deploy auctions.\n' +
+      'Spot USD volume of a pair: hd_analytics_fills_stats coin="@N" (exact, from fills, last 1-168 hours), ' +
+      'hd_candles coin="@N" (any window, est_quote_volume is an estimate), or hl_public_spot_meta view=contexts ' +
+      '(24h notional volume of every pair, filterable).',
     inputSchema: {
       view: viewSchema(
         ['resolve', 'pairs', 'tokens', 'auctions_live', 'auctions_history'],
@@ -567,7 +633,9 @@ export const exchangeTools: ToolModule = [
         .trim()
         .min(1)
         .optional()
-        .describe('view=resolve: "@307", "PURR/USDC" or a token name like "HTAO".'),
+        .describe(
+          'view=resolve (required) | pairs (filter): "@307", "PURR/USDC", a token name like "HTAO", or a family keyword like "xStock".',
+        ),
       search: z
         .string()
         .trim()
@@ -580,7 +648,9 @@ export const exchangeTools: ToolModule = [
         .min(1)
         .max(1000)
         .optional()
-        .describe('view=tokens (max 500, default 100) | auctions_history (default 1000).'),
+        .describe(
+          'view=pairs (default 100) | tokens (max 500, default 100) | auctions_history (default 1000).',
+        ),
       offset: offsetSchema,
       lookback_hours: z
         .number()
@@ -604,23 +674,37 @@ export const exchangeTools: ToolModule = [
         const notes =
           hits.length === 0
             ? [`No spot pair matches "${q}". Check the handle (@N) or token name.`]
-            : []
+            : hits.some((h) => h.match === 'contains')
+              ? [
+                  `No exact match for "${q}": these pairs contain it in the base token name, full name or deployer.`,
+                ]
+              : []
         return buildResult(
           { data: hits, meta: { source: 'POST /info spotMeta', query: q }, notes },
           { summary: `Spot resolve "${q}".`, maxTokens: ctx.config.maxResponseTokens },
         )
       }
       if (args.view === 'pairs') {
-        const page = await hd.getBareList<unknown>('/spot/pairs')
+        // GET /spot/pairs is capped at 200 rows of 1000+, so read the complete live spotMeta instead.
+        const meta = await hd.post<SpotMeta>('/info', { type: 'spotMeta' })
+        const rows = spotRows(meta, [], args.query)
+        const limit = args.limit ?? 100
+        const shown = rows.slice(0, limit)
         return buildResult(
           {
-            data: page.data,
-            meta: { source: '/spot/pairs' },
-            notes: [
-              'May be partial (no documented paging); use view=resolve for an authoritative lookup.',
-            ],
+            data: shown,
+            meta: { source: 'POST /info spotMeta', total: rows.length },
+            notes:
+              rows.length > shown.length
+                ? [
+                    `Showing ${shown.length} of ${rows.length} pairs: raise limit or filter with query.`,
+                  ]
+                : [],
           },
-          { summary: 'Spot pairs.', maxTokens: ctx.config.maxResponseTokens },
+          {
+            summary: `Spot pairs${args.query ? ` matching "${args.query}"` : ''}: ${rows.length}.`,
+            maxTokens: ctx.config.maxResponseTokens,
+          },
         )
       }
       if (args.view === 'tokens') {
@@ -628,9 +712,17 @@ export const exchangeTools: ToolModule = [
         const query: Query = { limit, offset: args.offset }
         if (args.search !== undefined) query.search = args.search
         const page = await hd.getBareList<unknown>('/spot/tokens', query)
+        // The endpoint returns one row per token per snapshot (newest first): keep the newest.
+        const seen = new Set<unknown>()
+        const tokens = page.data.filter((row) => {
+          const key = (row as { token_index?: unknown }).token_index ?? row
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
         return buildResult(
           {
-            data: page.data,
+            data: tokens,
             pagination: offsetPagination(page, args.offset, limit),
             meta: { source: '/spot/tokens' },
           },

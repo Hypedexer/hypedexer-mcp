@@ -29,6 +29,76 @@ const CANDLE_INTERVALS = [
   '1M',
 ] as const
 
+interface PublicSpotToken {
+  name: string
+  index: number
+  fullName?: string | null
+  deployerLabel?: string
+}
+interface PublicSpotPair {
+  name: string
+  index: number
+  tokens: number[]
+}
+interface PublicSpotMeta {
+  tokens: PublicSpotToken[]
+  universe: PublicSpotPair[]
+}
+interface PublicSpotCtx {
+  coin: string
+  markPx?: string
+  midPx?: string | null
+  prevDayPx?: string
+  dayNtlVlm?: string
+}
+
+/**
+ * Compact spot rows from spotMeta (and spotMetaAndAssetCtxs contexts, joined on the pair name).
+ * The raw universe is far over the response budget, so callers get one small row per pair,
+ * optionally filtered by handle, token name or a keyword in the base token name / full name.
+ */
+export function spotRows(
+  meta: PublicSpotMeta,
+  ctxs: PublicSpotCtx[],
+  query?: string,
+): Record<string, unknown>[] {
+  const byIndex = new Map(meta.tokens.map((t) => [t.index, t]))
+  const ctxByCoin = new Map(ctxs.map((c) => [c.coin, c]))
+  const q = query?.trim().toLowerCase()
+  const handle = q ? /^@(\d+)$/.exec(q) : null
+  const rows = meta.universe
+    .filter((p) => {
+      if (!q) return true
+      if (handle) return p.index === Number(handle[1])
+      const base = byIndex.get(p.tokens[0] ?? -1)
+      return [base?.name, base?.fullName, base?.deployerLabel, p.name].some(
+        (field) => typeof field === 'string' && field.toLowerCase().includes(q),
+      )
+    })
+    .map((p) => {
+      const base = byIndex.get(p.tokens[0] ?? -1)
+      const quote = byIndex.get(p.tokens[1] ?? -1)
+      const row: Record<string, unknown> = {
+        // Hyperliquid's coin id is the pair name: "@N", or "PURR/USDC" for canonical pairs.
+        coin: p.name,
+        pair: `${base?.name ?? p.tokens[0]}/${quote?.name ?? p.tokens[1]}`,
+        base_full_name: base?.fullName ?? null,
+      }
+      if (base?.deployerLabel) row.deployer = base.deployerLabel
+      const c = ctxByCoin.get(p.name)
+      if (c) {
+        row.mark_px = c.markPx ?? null
+        row.prev_day_px = c.prevDayPx ?? null
+        row.day_ntl_vlm = c.dayNtlVlm ?? null
+      }
+      return row
+    })
+  if (ctxs.length > 0) {
+    rows.sort((a, b) => Number(b.day_ntl_vlm ?? 0) - Number(a.day_ntl_vlm ?? 0))
+  }
+  return rows
+}
+
 export const publicTools: ToolModule = [
   defineTool({
     name: 'hl_public_all_mids',
@@ -69,22 +139,52 @@ export const publicTools: ToolModule = [
   defineTool({
     name: 'hl_public_spot_meta',
     group: 'public',
-    title: 'Hyperliquid spot metadata',
+    title: 'Hyperliquid spot pairs (and 24h volume)',
     description:
-      'Spot universe metadata: tokens and trading pairs. Set view="contexts" to also include per-pair market context (price, volume). Free, no API key.',
+      'Spot pairs as compact rows: coin handle ("@N", the id to pass to candles / fills), pair label ' +
+      '("TSLAX/USDC") and base token full name. view="contexts" adds price and 24h notional volume ' +
+      '(day_ntl_vlm, USD) per pair, sorted by volume. Filter with `query`: a handle ("@712"), a token ' +
+      'name ("TSLAX") or a family keyword matched inside the base token name or full name ("xStock", "EQX"). ' +
+      'The full spot universe (1000+ pairs) is too large for one response, so filter or use `limit`. ' +
+      'Free, no API key.',
     inputSchema: {
       view: viewSchema(
         ['universe', 'contexts'],
-        'universe = tokens + pairs; contexts = + live market context.',
+        'universe = pairs; contexts = pairs + price and 24h volume.',
         'universe',
       ),
+      query: z
+        .string()
+        .trim()
+        .min(1)
+        .optional()
+        .describe(
+          'Filter: "@712", "TSLAX", or a keyword in the base token name or full name ("xStock").',
+        ),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe('Max rows (default 100). contexts rows are sorted by 24h volume first.'),
     },
     async handler(args, ctx) {
-      const type = args.view === 'contexts' ? 'spotMetaAndAssetCtxs' : 'spotMeta'
-      const data = await ctx.hl.info({ type })
+      const contexts = args.view === 'contexts'
+      const raw = await ctx.hl.info({ type: contexts ? 'spotMetaAndAssetCtxs' : 'spotMeta' })
+      const meta = (contexts ? (raw as unknown[])[0] : raw) as PublicSpotMeta
+      const ctxs = contexts ? ((raw as unknown[])[1] as PublicSpotCtx[]) : []
+      const rows = spotRows(meta, ctxs, args.query)
+      const limit = args.limit ?? 100
+      const shown = rows.slice(0, limit)
+      const filter = args.query ? ` matching "${args.query}"` : ''
+      const more =
+        rows.length > shown.length
+          ? ` Showing ${shown.length} of ${rows.length}: raise limit or filter with query.`
+          : ''
       return rawResult(
-        data,
-        `Hyperliquid spot ${args.view === 'contexts' ? 'metadata + market contexts' : 'metadata'}.`,
+        shown,
+        `Hyperliquid spot pairs${filter}${contexts ? ', by 24h notional volume' : ''}: ${rows.length} found.${more}`,
       )
     },
   }),
