@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.3.0 (2026-11-25)
+
+Spot and priority fees, live-checked 2026-11-24. Includes 2.2.1, which was
+tagged in git but never published to npm.
+
+- `hl_public_spot_meta` returned the raw spotMeta (about 36k tokens, 92k with
+  contexts), always over the 25k response budget, so callers only got a
+  clipped body. It now returns compact rows (`coin`, `pair`, `base_full_name`,
+  `deployer`), filtered by `query` (handle, token name or family keyword) and
+  capped by `limit`; `view=contexts` adds `mark_px`, `prev_day_px` and
+  `day_ntl_vlm` (24h USD) sorted by volume. Breaking for callers that parsed
+  the raw spotMeta.
+- `hd_spot_meta`: `resolve` falls back to a family keyword matched in the base
+  token name, full name or deployer ("xStock", "eqx"); `pairs` reads the
+  complete spotMeta instead of `/spot/pairs` (capped at 200 of 1000+ rows) and
+  takes `query` and `limit`; `tokens` drops repeated snapshot rows.
+- `hd_exchange_info view=asset_context` completes spot pairs (`markPx`,
+  `prevDayPx`, `dayNtlVlm`, `dayBaseVlm`) from the public spotMetaAndAssetCtxs.
+- `hd_hip3_gossip view=burn`: HYPE burned in the read-priority auction over a
+  window (max 72h), each auction counted once at its clearing price, with
+  totals per day, slot and winning IP.
+- Descriptions brought up to date: the priority-fee daily series is current
+  since 2026-04-13, the node leaderboard overstates spend through duplicate
+  snapshots, `total_priority_gas` in `hd_user_profile` is filled, the read
+  auction covers every market (not only HIP-3), `hd_order_book view=trades`
+  is a short live window.
+- HIP-3 coins keep their lowercase dex prefix (`xyz:SP500`); native "k"
+  tickers (`kPEPE`) keep their case.
+- `@hono/node-server` override raised to 2.1.11 (GHSA-jpvv-r467-5p4w),
+  `hono` 4.13.20, `vite` 6.4.6; `packageManager` pins pnpm 10.33.2.
+
 ## 2.2.1 (2026-11-16)
 
 - Fix the key signup link in the 401 messages (stdio and HTTP), the README and
